@@ -4,6 +4,12 @@ extends Control
 ## yellow dots mark saved keyframes. Emits time_changed whenever the
 ## playhead moves so the rig can preview the pose at that time.
 
+signal key_move_started()
+signal key_moved(old_time: float, new_time: float)
+var key_labels: Dictionary = {}
+var _moving_key := false
+var _move_time := 0.0
+
 signal time_changed(t: float)
 ## Shift+click-dragging an EXISTING keyframe dot rigidly slides it and every
 ## keyframe to its right by the same amount -- e.g. to squeeze out an
@@ -58,10 +64,16 @@ func _gui_input(event: InputEvent) -> void:
 				# not even a normal scrub -- this gesture only ever means
 				# "grab that keyframe," never "move the playhead."
 			else:
+				var hit = _find_keyframe_near(event.position.x)
+				if hit != null:
+					_moving_key = true
+					_move_time = hit
+					key_move_started.emit()
 				_dragging = true
 				_scrub_to(event.position.x)
 				accept_event()
 		else:
+			_moving_key = false
 			if _shift_dragging:
 				_shift_dragging = false
 				shift_drag_ended.emit()
@@ -77,7 +89,12 @@ func _gui_input(event: InputEvent) -> void:
 				shift_drag_moved.emit(_shift_anchor_time, delta_time)
 			accept_event()
 		elif _dragging:
-			_scrub_to(event.position.x)
+			if _moving_key:
+				var next_time := clampf((event.position.x - MARGIN) / maxf(size.x - 2 * MARGIN, 1) * length, 0, length)
+				key_moved.emit(_move_time, next_time)
+				if keyframe_times.has(next_time): _move_time = next_time
+			else:
+				_scrub_to(event.position.x)
 			accept_event()
 
 ## Returns the time of the keyframe dot nearest `x` (within SNAP_PIXELS), or
@@ -125,9 +142,14 @@ func _draw() -> void:
 	var track_y: float = size.y * 0.5
 	draw_line(Vector2(MARGIN, track_y), Vector2(MARGIN + w, track_y), Color(0.55, 0.55, 0.52), 3.0)
 
+	var previous_x := -100.0
 	for t in keyframe_times:
 		var x: float = MARGIN + (t / length) * w
 		var selected: bool = abs(t - current_time) < 0.005
+		if x - previous_x < 5 and not selected: continue
+		previous_x = x
+		var label: String = key_labels.get(t, "")
+		if not label.is_empty(): draw_string(ThemeDB.fallback_font, Vector2(x, 13), label, HORIZONTAL_ALIGNMENT_LEFT, 85, 11, Color(.15,.15,.15))
 		if selected:
 			draw_circle(Vector2(x, track_y), 10.0, Color(1, 1, 1))
 		draw_circle(Vector2(x, track_y), 7.0, Color(0.95, 0.82, 0.15))

@@ -57,6 +57,9 @@ var _play_time: float = 0.0
 # (gizmo/handle) starts, plus before Reset/Open. Ctrl+Z pops back one step.
 const UNDO_MAX_SIZE := 20
 var _undo_stack: Array = []
+var _redo_stack: Array = []
+var qol: Node = null
+var mdl_bank: Node = null
 
 # Clipboard for "Copy key" / "Paste key": lets you grab the pose at one point
 # on the timeline and stamp it onto another keyframe, overwriting it.
@@ -67,6 +70,7 @@ var _copied_pose: Dictionary = {}
 var _copied_component_pose: Dictionary = {}
 
 func _ready() -> void:
+	get_window().title = "NWNAnimationTool"
 	rig_controller.camera = $Camera3D
 	rig_controller.rig_root = $Rig
 	rig_controller.setup()
@@ -79,10 +83,13 @@ func _ready() -> void:
 	side_panel.reset_pressed.connect(_on_reset_pressed)
 	side_panel.pole_vectors_toggled.connect(_on_pole_vectors_toggled)
 	side_panel.save_file_requested.connect(_on_save_file_requested)
+	side_panel.save_pose_requested.connect(func(path, name): _on_save_file_requested(path, name, true))
 	side_panel.open_file_requested.connect(_on_open_file_requested)
 	side_panel.save_to_timeline_requested.connect(_on_save_to_timeline_requested)
 	side_panel.duration_changed.connect(_on_duration_changed)
 	side_panel.timeline.time_changed.connect(_on_timeline_scrubbed)
+	side_panel.timeline.key_move_started.connect(_push_undo_snapshot)
+	side_panel.timeline.key_moved.connect(_move_single_key)
 	side_panel.timeline.shift_drag_started.connect(_on_timeline_shift_drag_started)
 	side_panel.timeline.shift_drag_moved.connect(_on_timeline_shift_drag_moved)
 	side_panel.timeline.shift_drag_ended.connect(_on_timeline_shift_drag_ended)
@@ -143,11 +150,22 @@ func _ready() -> void:
 	_apply_component_materials($Rig)
 	_capture_rest_transforms($Rig)
 	_init_default_limb_targets()
+	_apply_nwn_idle()
+	qol = preload("res://scripts/workshop.gd").new()
+	qol.name = "Workshop"
+	add_child(qol)
+	mdl_bank = preload("res://scripts/mdl_bank.gd").new()
+	mdl_bank.name = "MdlBank"
+	add_child(mdl_bank)
 
 func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventKey and event.pressed:
 		if event.keycode == KEY_Z and event.is_command_or_control_pressed():
-			_undo()
+			if event.shift_pressed: _redo()
+			else: _undo()
+			get_viewport().set_input_as_handled()
+		elif event.keycode == KEY_Y and event.is_command_or_control_pressed():
+			_redo()
 			get_viewport().set_input_as_handled()
 		elif event.keycode == KEY_F:
 			_on_focus_pressed()
@@ -179,17 +197,47 @@ func _on_focus_pressed() -> void:
 
 	camera.focus_on(pos)
 
+func _document_state() -> Dictionary:
+	return {"pose": MdlExporter.capture_pose($Rig), "keys": _keyframes.duplicate(true),
+		"length": _anim_length, "time": side_panel.timeline.current_time,
+		"name": side_panel.get_anim_name(), "model": _current_model_path,
+		"bank_clip": mdl_bank.active_clip if mdl_bank != null else "",
+		"bank_session": mdl_bank.session if mdl_bank != null else ""}
+
+func _restore_document(state: Dictionary) -> void:
+	if mdl_bank != null and (state.get("bank_clip", "") != mdl_bank.active_clip or state.get("bank_session", "") != mdl_bank.session):
+		mdl_bank.active_clip = ""
+	_on_play_toggled(false)
+	if state.get("model", _current_model_path) != _current_model_path:
+		_on_gender_selected(state.model)
+	_keyframes = state["keys"].duplicate(true)
+	_anim_length = state.length
+	side_panel.set_anim_name(state.name)
+	side_panel.set_duration(_anim_length)
+	_refresh_timeline_markers()
+	side_panel.timeline.set_current_time(state.time)
+	_apply_transforms(state.pose)
+	if qol != null: qol.release_constraints()
+
 func _push_undo_snapshot() -> void:
-	_undo_stack.append(MdlExporter.capture_pose($Rig))
-	if _undo_stack.size() > UNDO_MAX_SIZE:
-		_undo_stack.pop_front()
+	_undo_stack.append(_document_state())
+	_redo_stack.clear()
+	if qol != null: qol.dirty = true
+	if _undo_stack.size() > 80: _undo_stack.pop_front()
 
 func _undo() -> void:
-	if _undo_stack.is_empty():
-		return
-	var snapshot: Dictionary = _undo_stack.pop_back()
-	_apply_transforms(snapshot)
-	side_panel.set_status("Undo.")
+	if _undo_stack.is_empty(): return
+	_redo_stack.append(_document_state())
+	_restore_document(_undo_stack.pop_back())
+	if qol != null: qol.dirty = true
+	side_panel.set_status("Undo (Ctrl+Z).")
+
+func _redo() -> void:
+	if _redo_stack.is_empty(): return
+	_undo_stack.append(_document_state())
+	_restore_document(_redo_stack.pop_back())
+	if qol != null: qol.dirty = true
+	side_panel.set_status("Redo (Ctrl+Y / Ctrl+Shift+Z).")
 
 func _capture_rest_transforms(node: Node) -> void:
 	if node is Node3D:
@@ -203,6 +251,7 @@ func _on_reset_pressed() -> void:
 		if is_instance_valid(node):
 			node.transform = _rest_transforms[node]
 	_init_default_limb_targets()
+	_apply_nwn_idle()
 	var current_selection: String = rig_controller.selected_component
 	if current_selection != "":
 		_on_component_selected(current_selection)
@@ -256,16 +305,18 @@ func _on_gender_selected(model_path: String) -> void:
 	# actually re-apply the current frame against the new nodes.
 	if not _keyframes.is_empty():
 		_apply_pose_at_time(side_panel.timeline.current_time)
+	else:
+		_apply_nwn_idle()
 
 	_current_model_path = model_path
 	side_panel.set_active_gender(model_path)
 	side_panel.set_status("Model switched to %s" % model_path.get_file())
 
-## "New": a harder reset than "Reset pose" — wipes the timeline, undo
-## history, clipboards, retarget import state, and display toggles too,
-## not just the pose. Confirmed via a dialog in side_panel.gd since it
-## can't be undone (it clears the undo stack itself).
+## New resets the document and preview tools. The animation is recoverable with Undo.
 func _on_new_requested() -> void:
+	_push_undo_snapshot()
+	if mdl_bank != null: mdl_bank.active_clip = ""
+	if qol != null: qol.release_constraints()
 	for node in _rest_transforms.keys():
 		if is_instance_valid(node):
 			node.transform = _rest_transforms[node]
@@ -285,7 +336,6 @@ func _on_new_requested() -> void:
 	_refresh_timeline_markers()
 	side_panel.timeline.set_current_time(0.0)
 
-	_undo_stack.clear()
 	_copied_pose = {}
 	_copied_component_pose = {}
 
@@ -307,7 +357,17 @@ func _on_new_requested() -> void:
 	green_visualizer.transform = Transform3D.IDENTITY
 
 	side_panel.reset_display_toggles()
+	_apply_nwn_idle()
 	side_panel.set_status("New project started.")
+
+func _apply_nwn_idle() -> void:
+	var path: String = WorkshopSettings.path_value("idle")
+	if path.is_empty() or not FileAccess.file_exists(path): return
+	var source := FileAccess.get_file_as_string(path)
+	var idle: Variant = MdlImporter.parse(source, $Rig)
+	if idle != null:
+		_apply_transforms(idle.keyframes[0].transforms)
+		if _keyframes.is_empty(): side_panel.set_anim_name("pause1")
 
 func _on_pole_vectors_toggled(show_all: bool) -> void:
 	_show_all_poles = show_all
@@ -626,9 +686,16 @@ func _clear_handles() -> void:
 # ---------------------------------------------------------------------------
 
 func _on_duration_changed(value: float) -> void:
+	_push_undo_snapshot()
+	var ratio: float = value / max(_anim_length, 0.001)
+	for key in _keyframes: key["time"] *= ratio
+	_play_time *= ratio
 	_anim_length = value
+	_refresh_timeline_markers()
+	side_panel.set_duration(value)
 
 func _on_save_to_timeline_requested() -> void:
+	_push_undo_snapshot()
 	var transforms: Dictionary = MdlExporter.capture_pose($Rig)
 	var t: float = side_panel.timeline.current_time
 	_upsert_keyframe(t, transforms)
@@ -663,6 +730,8 @@ func _refresh_timeline_markers() -> void:
 	for kf in _keyframes:
 		times.append(kf["time"])
 	side_panel.timeline.set_keyframe_times(times)
+	side_panel.timeline.key_labels.clear()
+	for key in _keyframes: side_panel.timeline.key_labels[key.time] = key.get("label", "")
 
 # ---------------------------------------------------------------------------
 # Shift+drag a keyframe: rigidly slides it and every keyframe to its right
@@ -680,7 +749,7 @@ func _on_timeline_shift_drag_started(_anchor_time: float) -> void:
 	_push_undo_snapshot()
 	_shift_drag_snapshot = []
 	for kf in _keyframes:
-		_shift_drag_snapshot.append({"time": kf["time"], "transforms": kf["transforms"]})
+		_shift_drag_snapshot.append(kf.duplicate(true))
 
 func _on_timeline_shift_drag_moved(anchor_time: float, delta_time: float) -> void:
 	if _shift_drag_snapshot.is_empty():
@@ -710,7 +779,9 @@ func _on_timeline_shift_drag_moved(anchor_time: float, delta_time: float) -> voi
 	for i in range(_shift_drag_snapshot.size()):
 		var kf: Dictionary = _shift_drag_snapshot[i]
 		var new_time: float = kf["time"] + clamped_delta if i >= anchor_idx else kf["time"]
-		new_keyframes.append({"time": new_time, "transforms": kf["transforms"]})
+		var moved_key: Dictionary = kf.duplicate(true)
+		moved_key["time"] = new_time
+		new_keyframes.append(moved_key)
 	_keyframes = new_keyframes
 
 	_refresh_timeline_markers()
@@ -860,18 +931,23 @@ func _apply_transforms(transforms: Dictionary) -> void:
 		_on_component_selected(current_selection)
 	_refresh_all_pole_handles()
 
-func _on_save_file_requested(path: String, anim_name: String) -> void:
+func _on_save_file_requested(path: String, anim_name: String, pose_only: bool = false) -> void:
 	var content: String
-	if _keyframes.is_empty():
+	if pose_only or _keyframes.is_empty():
 		content = MdlExporter.export_pose($Rig, anim_name)
 	else:
 		content = MdlExporter.export_animation($Rig, anim_name, _anim_length, _keyframes)
 	var file := FileAccess.open(path, FileAccess.WRITE)
 	if file == null:
-		side_panel.set_status("Error: could not write file.")
+		side_panel.set_status("Cannot save %s: %s" % [path, error_string(FileAccess.get_open_error())])
 		return
 	file.store_string(content)
+	file.flush()
+	var write_error := file.get_error()
 	file.close()
+	if write_error != OK:
+		side_panel.set_status("Save failed: %s" % error_string(write_error))
+		return
 	side_panel.set_status("Saved: %s" % path)
 
 # ---------------------------------------------------------------------------
@@ -918,6 +994,7 @@ func _refresh_transform_panel() -> void:
 			panel.set_rotation_fields(_basis_to_euler_degrees(node.basis))
 
 func _on_panel_position_changed(v: Vector3) -> void:
+	_push_undo_snapshot()
 	var component_id: String = rig_controller.selected_component
 	if component_id == "pelvis":
 		var root_dummy: Node3D = rig_controller.find_node("rootdummy")
@@ -937,6 +1014,7 @@ func _on_panel_position_changed(v: Vector3) -> void:
 			_target_handle.global_position = v
 
 func _on_panel_rotation_changed(v: Vector3) -> void:
+	_push_undo_snapshot()
 	var component_id: String = rig_controller.selected_component
 	if component_id == "":
 		return
@@ -956,6 +1034,12 @@ func _on_panel_rotation_changed(v: Vector3) -> void:
 			node.basis = basis
 
 func _on_open_file_requested(path: String) -> void:
+	if mdl_bank != null and not mdl_bank.loading_clip:
+		if mdl_bank.recognizes(path):
+			mdl_bank.open_bank(path)
+			return
+		mdl_bank.active_clip = ""
+	if qol != null: qol.release_constraints()
 	_push_undo_snapshot()
 	var file := FileAccess.open(path, FileAccess.READ)
 	if file == null:
@@ -964,8 +1048,13 @@ func _on_open_file_requested(path: String) -> void:
 	var text := file.get_as_text()
 	file.close()
 
+	# Missing tracks use the model's rest pose, never an unrelated previous clip.
+	var previous_pose: Dictionary = MdlExporter.capture_pose($Rig)
+	for node in _rest_transforms:
+		if is_instance_valid(node): node.transform = _rest_transforms[node]
 	var result = MdlImporter.parse(text, $Rig)
 	if result == null:
+		_apply_transforms(previous_pose)
 		side_panel.set_status("Error: could not parse file (no 'newanim' found).")
 		return
 
@@ -1292,9 +1381,12 @@ func _apply_glb_source_xform() -> void:
 
 # Pose memory slots (3 session-only snapshots)
 var _pose_memory: Array = [null, null, null]  # each entry is a snapshot dict or null
+var _pose_memory_names: Array[String] = ["", "", ""]
 
 func _on_pose_memory_save(slot: int) -> void:
 	_pose_memory[slot] = MdlExporter.capture_pose($Rig)
+	_pose_memory_names[slot] = side_panel.get_anim_name() if not side_panel.get_anim_name().is_empty() else "Untitled pose"
+	side_panel.set_pose_memory_slot_name(slot, _pose_memory_names[slot])
 	side_panel.set_pose_memory_slot_filled(slot, true)
 	side_panel.set_status("Pose saved to slot %d." % (slot + 1))
 
@@ -1950,3 +2042,15 @@ func _save_retarget_config_to(path: String) -> void:
 	_retarget_config["bone_map"] = bone_map
 	side_panel.set_status("Config saved to %s" % path)
 	side_panel.bone_config_panel.set_status("Config saved to %s" % path)
+
+func _move_single_key(old_time: float, new_time: float) -> void:
+	for key in _keyframes:
+		if absf(key.time - new_time) < .001 and absf(key.time - old_time) > .001: return
+	for key in _keyframes:
+		if absf(key.time - old_time) < .001:
+			key.time = new_time
+			break
+	_keyframes.sort_custom(func(a,b): return a.time < b.time)
+	_refresh_timeline_markers()
+	side_panel.timeline.set_current_time(new_time)
+	_apply_pose_at_time(new_time)
