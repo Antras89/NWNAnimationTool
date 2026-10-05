@@ -69,7 +69,18 @@ var _copied_pose: Dictionary = {}
 # component's pose, independent of the timeline.
 var _copied_component_pose: Dictionary = {}
 
+var _nwn_skeleton := MeshInstance3D.new()
+var _nwn_skeleton_mesh := ImmediateMesh.new()
+
 func _ready() -> void:
+	_nwn_skeleton.mesh = _nwn_skeleton_mesh
+	var skeleton_material := StandardMaterial3D.new()
+	skeleton_material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	skeleton_material.no_depth_test = true
+	skeleton_material.albedo_color = Color(1.0, .85, .15)
+	_nwn_skeleton.material_override = skeleton_material
+	_nwn_skeleton.visible = false
+	add_child(_nwn_skeleton)
 	get_window().title = "NWNAnimationTool"
 	rig_controller.camera = $Camera3D
 	rig_controller.rig_root = $Rig
@@ -100,6 +111,7 @@ func _ready() -> void:
 	side_panel.set_duration(_anim_length)
 	side_panel.transform_panel.position_changed.connect(_on_panel_position_changed)
 	side_panel.transform_panel.rotation_changed.connect(_on_panel_rotation_changed)
+	gizmo.rotation_requested.connect(_rotate_selection)
 	side_panel.transform_panel.copy_selection_requested.connect(_on_copy_selection_requested)
 	side_panel.transform_panel.paste_selection_requested.connect(_on_paste_selection_requested)
 	side_panel.undo_requested.connect(_undo)
@@ -481,7 +493,7 @@ func _apply_component_materials_recursive(node: Node, node_to_component: Diction
 		var color := COLOR_NEUTRAL
 		if ik_tip_names.has(node.name):
 			color = COLOR_IK
-		elif node_to_component.has(node.name) and fk_component_ids.has(node_to_component[node.name]):
+		elif node_to_component.has(node.name) and node_to_component[node.name] in ["head", "torso", "pelvis"]:
 			color = COLOR_FK
 		var mat := StandardMaterial3D.new()
 		mat.albedo_color = color
@@ -502,6 +514,7 @@ func _process(delta: float) -> void:
 		_sync_video_pose_overlay(_play_time)
 
 	for component_id in _limb_targets.keys():
+		if rig_controller.has_fk_selection_in(rig_controller.get_component_chain(component_id)): continue
 		var chain: Array[Node3D] = rig_controller.get_chain_nodes(component_id)
 		if chain.size() != 3:
 			continue
@@ -521,6 +534,7 @@ func _process(delta: float) -> void:
 		if is_instance_valid(node):
 			node.basis = Basis.IDENTITY
 	_refresh_transform_panel()
+	if _nwn_skeleton.visible: _update_nwn_skeleton()
 
 func _on_play_toggled(playing: bool) -> void:
 	if playing and _keyframes.is_empty():
@@ -555,13 +569,16 @@ func _sync_video_pose_overlay(t: float) -> void:
 	_show_ai_landmark_overlay(_video_extracted_frames[best_idx]["world_landmarks"])
 
 func _on_component_selected(component_id: String) -> void:
+	_resync_limb_targets_from_current_pose()
 	_clear_handles()
 	var is_ik := false
 	for comp in RigComponents.definitions():
 		if comp.id == component_id:
 			is_ik = comp.is_ik
 			break
-	if is_ik:
+	if rig_controller.selected_components.size() > 1:
+		gizmo.attach_to(rig_controller.selection_roots()[0])
+	elif is_ik:
 		_setup_ik_handles(component_id)
 		var chain: Array[Node3D] = rig_controller.get_chain_nodes(component_id)
 		if chain.size() == 3:
@@ -577,10 +594,11 @@ func _on_component_selected(component_id: String) -> void:
 	_refresh_all_pole_handles()
 
 	side_panel.transform_panel.visible = true
-	side_panel.transform_panel.set_label(component_id)
-	side_panel.transform_panel.set_position_enabled(is_ik or component_id == "pelvis" or component_id in ATTACHMENT_COMPONENT_IDS)
+	side_panel.transform_panel.set_label(", ".join(rig_controller.selected_components))
+	side_panel.transform_panel.set_position_enabled(rig_controller.selected_components.size() == 1 and (is_ik or component_id == "pelvis" or component_id in ATTACHMENT_COMPONENT_IDS))
 
 func _on_component_deselected() -> void:
+	_resync_limb_targets_from_current_pose()
 	gizmo.detach()
 	_clear_handles()
 	_refresh_all_pole_handles()
@@ -967,6 +985,9 @@ func _refresh_transform_panel() -> void:
 	var panel: VBoxContainer = side_panel.transform_panel
 	if not panel.visible or panel.any_field_focused():
 		return
+	if rig_controller.selected_components.size() > 1:
+		panel.set_rotation_fields(_basis_to_euler_degrees(gizmo.target.basis))
+		return
 	var component_id: String = rig_controller.selected_component
 	if component_id == "":
 		return
@@ -1015,23 +1036,16 @@ func _on_panel_position_changed(v: Vector3) -> void:
 
 func _on_panel_rotation_changed(v: Vector3) -> void:
 	_push_undo_snapshot()
-	var component_id: String = rig_controller.selected_component
-	if component_id == "":
-		return
-	var is_ik := false
-	for comp in RigComponents.definitions():
-		if comp.id == component_id:
-			is_ik = comp.is_ik
-			break
-	var basis := _euler_degrees_to_basis(v)
-	if is_ik:
-		var chain: Array[Node3D] = rig_controller.get_chain_nodes(component_id)
-		if chain.size() == 3:
-			chain[2].basis = basis
+	_rotate_selection(_euler_degrees_to_basis(v))
+
+func _rotate_selection(value: Basis) -> void:
+	if gizmo.target == null: return
+	var delta: Basis = gizmo.target.basis.inverse() * value
+	if rig_controller.selected_components.size() > 1:
+		for node in rig_controller.selection_roots(): node.basis = node.basis * delta
 	else:
-		var node: Node3D = rig_controller.get_component_root_node(component_id)
-		if node != null:
-			node.basis = basis
+		gizmo.target.basis = value
+	_resync_limb_targets_from_current_pose()
 
 func _on_open_file_requested(path: String) -> void:
 	if mdl_bank != null and not mdl_bank.loading_clip:
@@ -1169,6 +1183,8 @@ func _bind_wizard_overlay(panel: Control, source: String) -> void:
 		_on_overlay_toggled(panel.visible))
 
 func _on_overlay_toggled(enabled: bool) -> void:
+	_nwn_skeleton.visible = enabled
+	if enabled: _update_nwn_skeleton()
 	match _overlay_source:
 		"ai":
 			green_visualizer.visible = enabled
@@ -1176,7 +1192,7 @@ func _on_overlay_toggled(enabled: bool) -> void:
 			_on_retarget_overlay_toggled(enabled)
 		_:
 			if enabled:
-				side_panel.set_status("Load a motion source first (Utility menu).")
+				side_panel.set_status("NWN skeleton overlay")
 
 ## Show/hide the red skeleton overlay (retarget source).
 func _on_retarget_overlay_toggled(enabled: bool) -> void:
@@ -2054,3 +2070,19 @@ func _move_single_key(old_time: float, new_time: float) -> void:
 	_refresh_timeline_markers()
 	side_panel.timeline.set_current_time(new_time)
 	_apply_pose_at_time(new_time)
+
+func _update_nwn_skeleton() -> void:
+	_nwn_skeleton_mesh.clear_surfaces()
+	_nwn_skeleton_mesh.surface_begin(Mesh.PRIMITIVE_LINES)
+	for entry in MdlExporter.flatten_skeleton_tree():
+		var node: Node3D = rig_controller.find_node(entry.name)
+		if node == null: continue
+		var p := _nwn_skeleton.to_local(node.global_position)
+		var parent: Node3D = rig_controller.find_node(entry.parent) if entry.parent != "" else null
+		if parent != null:
+			_nwn_skeleton_mesh.surface_add_vertex(p)
+			_nwn_skeleton_mesh.surface_add_vertex(_nwn_skeleton.to_local(parent.global_position))
+		for axis in [Vector3.RIGHT, Vector3.UP, Vector3.BACK]:
+			_nwn_skeleton_mesh.surface_add_vertex(p - axis * .012)
+			_nwn_skeleton_mesh.surface_add_vertex(p + axis * .012)
+	_nwn_skeleton_mesh.surface_end()

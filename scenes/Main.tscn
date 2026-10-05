@@ -226,7 +226,7 @@ text = "Poles"
 [node name="SkeletonOverlayButton" type="Button" parent="SidePanel/ViewportToolbar" unique_id=926298020]
 custom_minimum_size = Vector2(28, 28)
 layout_mode = 2
-tooltip_text = "Show the source-motion reference skeleton (red = glb animation, green = AI pose), synced to the timeline"
+tooltip_text = "Show the NWN mannequin skeleton and any loaded source skeleton, synced to the pose"
 theme_override_colors/font_pressed_color = Color(0.85, 0.45, 0.13, 1)
 toggle_mode = true
 text = "Skel"

@@ -96,3 +96,8 @@ Full binary validation additionally requires a supported compiler and locally
 available model dependencies. In-game behavior must still be checked in NWN1.
 
 Known standard male/female animation supermodels automatically select the matching preview mannequin, avoiding female neck offsets being applied to male geometry. Custom skeleton proportions remain outside the humanoid preview support.
+
+### Joint selection and skeleton
+Click an upper arm, forearm, hand, thigh, calf, or foot to rotate that joint.
+Shift-click adds/removes parts from the selection; rotation rings and numeric rotation fields affect the selected roots without applying the same rotation twice to a selected descendant. Click empty space to clear selection. Alt-click a limb retains the previous whole-limb IK controls.
+Skel displays the native NWN node hierarchy through the mannequin, even without an imported motion source, and follows the current pose.
