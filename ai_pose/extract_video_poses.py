@@ -23,6 +23,10 @@ import json
 import math
 
 def run(video_path: str, sample_fps: float = 10.0, smooth_window: int = 3) -> dict:
+    if not math.isfinite(sample_fps) or sample_fps <= 0:
+        return {"error": "Sample FPS must be a positive finite number"}
+    if not os.path.isfile(video_path):
+        return {"error": "Video file does not exist: " + video_path}
     import cv2
 
     try:
@@ -32,7 +36,7 @@ def run(video_path: str, sample_fps: float = 10.0, smooth_window: int = 3) -> di
     except ImportError:
         return {"error": "mediapipe not installed. Run: pip install mediapipe opencv-python"}
 
-    model_path = os.path.join(os.path.dirname(__file__), "pose_landmarker.task")
+    model_path = os.environ.get("NWN_POSE_MODEL", os.path.join(os.path.dirname(__file__), "pose_landmarker.task"))
     if not os.path.exists(model_path):
         import urllib.request
         url = "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/latest/pose_landmarker_lite.task"
@@ -53,6 +57,7 @@ def run(video_path: str, sample_fps: float = 10.0, smooth_window: int = 3) -> di
     opts = mp_vision.PoseLandmarkerOptions(
         base_options=base_opts,
         output_segmentation_masks=False,
+        running_mode=mp_vision.RunningMode.VIDEO,
         num_poses=1,
     )
     detector = mp_vision.PoseLandmarker.create_from_options(opts)
@@ -60,29 +65,31 @@ def run(video_path: str, sample_fps: float = 10.0, smooth_window: int = 3) -> di
     raw_frames = []   # list of (time, landmarks_list) — only detected frames
     frame_idx  = 0
 
-    while True:
-        ret, frame_bgr = cap.read()
-        if not ret:
-            break
+    try:
+        while True:
+            ret, frame_bgr = cap.read()
+            if not ret:
+                break
 
-        if frame_idx % frame_step == 0:
-            timestamp_sec = frame_idx / video_fps
-            rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
-            mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)
-            result = detector.detect(mp_image)
+            if frame_idx % frame_step == 0:
+                timestamp_sec = frame_idx / video_fps
+                rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
+                mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)
+                result = detector.detect_for_video(mp_image, round(timestamp_sec * 1000))
 
-            if result.pose_world_landmarks:
-                lms = result.pose_world_landmarks[0]
-                landmarks = [
-                    {"x": lm.x, "y": lm.y, "z": lm.z, "visibility": lm.visibility}
-                    for lm in lms
-                ]
-                raw_frames.append((timestamp_sec, landmarks))
+                if result.pose_world_landmarks:
+                    lms = result.pose_world_landmarks[0]
+                    landmarks = [
+                        {"x": lm.x, "y": lm.y, "z": lm.z, "visibility": lm.visibility}
+                        for lm in lms
+                    ]
+                    raw_frames.append((timestamp_sec, landmarks))
 
-        frame_idx += 1
+            frame_idx += 1
 
-    cap.release()
-    detector.close()
+    finally:
+        cap.release()
+        detector.close()
 
     if not raw_frames:
         return {"error": "No pose detected in any frame"}
@@ -125,5 +132,8 @@ if __name__ == "__main__":
     sample_fps   = float(sys.argv[2]) if len(sys.argv) > 2 else 10.0
     smooth_window = int(sys.argv[3])  if len(sys.argv) > 3 else 3
 
-    result = run(video_path, sample_fps, smooth_window)
+    try:
+        result = run(video_path, sample_fps, smooth_window)
+    except Exception as exc:
+        result = {"error": str(exc)}
     print(json.dumps(result))

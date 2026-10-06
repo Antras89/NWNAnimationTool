@@ -30,3 +30,6 @@ ai_pose/pose_landmarker.task
 # Python helper/test caches
 __pycache__/
 *.py[cod]
+
+# Downloaded MediaPipe model
+ai_pose/*.task

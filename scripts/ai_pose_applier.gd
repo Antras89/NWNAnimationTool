@@ -358,7 +358,7 @@ static func compute_rest_calibration(world_landmarks: Array, rig_root: Node3D,
 		if bone == null:
 			continue
 		# offset such that: conv(frame 1) * offset == bone's rest WORLD basis
-		calibration[bone_name] = Quaternion((conv as Basis).inverse() * bone.global_basis)
+		calibration[bone_name] = ((conv as Basis).inverse() * bone.global_basis).get_rotation_quaternion()
 	return calibration
 
 

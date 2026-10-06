@@ -16,7 +16,7 @@ import os
 import json
 import urllib.request
 
-MODEL_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "pose_landmarker.task")
+MODEL_PATH = os.environ.get("NWN_POSE_MODEL", os.path.join(os.path.dirname(os.path.abspath(__file__)), "pose_landmarker.task"))
 MODEL_URL = (
     "https://storage.googleapis.com/mediapipe-models/"
     "pose_landmarker/pose_landmarker_lite/float16/latest/pose_landmarker_lite.task"
@@ -51,7 +51,7 @@ def decode_image(path: str):
     try:
         import cv2
         import numpy as np
-        img_bgr = cv2.imread(path)
+        img_bgr = cv2.imdecode(np.fromfile(path, dtype=np.uint8), cv2.IMREAD_COLOR)
         if img_bgr is None:
             raise RuntimeError("cv2.imread returned None")
         return cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB)

@@ -101,3 +101,5 @@ Known standard male/female animation supermodels automatically select the matchi
 Click an upper arm, forearm, hand, thigh, calf, or foot to rotate that joint.
 Shift-click adds/removes parts from the selection; rotation rings and numeric rotation fields affect the selected roots without applying the same rotation twice to a selected descendant. Click empty space to clear selection. Alt-click a limb retains the previous whole-limb IK controls.
 Skel displays the native NWN node hierarchy through the mannequin, even without an imported motion source, and follows the current pose.
+
+Individual joints and Shift selections expose XYZ translation arrows and numeric Position fields. Image/video pose extraction requires MediaPipe and OpenCV in the configured Pose Python interpreter; the scripts are bundled in exported builds. Video extraction uses timestamped tracking.

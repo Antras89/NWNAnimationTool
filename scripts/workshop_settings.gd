@@ -2,7 +2,7 @@ class_name WorkshopSettings
 extends RefCounted
 
 const FILE := "user://workshop-settings.cfg"
-const DEFAULTS := {"python":"", "compiler":"", "game_data":"", "dependencies":"", "pose_root":"", "references":"user://references", "idle":""}
+const DEFAULTS := {"python":"", "pose_python":"", "compiler":"", "game_data":"", "dependencies":"", "pose_root":"", "references":"user://references", "idle":""}
 const BACKEND_FILES := ["bridge.py", "vendor/CompileModels.py", "vendor/RobePoseAudit.py", "vendor/stock_resources.py", "vendor/LICENSE-SWLOR.txt"]
 
 static func path_value(key: String) -> String:
@@ -35,7 +35,7 @@ static func show_dialog(parent: Node) -> void:
 	parent.add_child(dialog)
 	var box := VBoxContainer.new()
 	dialog.add_child(box)
-	var labels := {"python":"Python executable (empty: search PATH)", "compiler":"Supported nwnmdlcomp executable", "game_data":"NWN installation data folder", "dependencies":"Custom supermodel folder", "pose_root":"Pose library folder containing F1 / F2 / F3", "references":"Local NWN reference library folder", "idle":"Default idle animation block (optional)"}
+	var labels := {"pose_python":"Pose Python executable (MediaPipe + OpenCV)", "python":"Python executable (empty: search PATH)", "compiler":"Supported nwnmdlcomp executable", "game_data":"NWN installation data folder", "dependencies":"Custom supermodel folder", "pose_root":"Pose library folder containing F1 / F2 / F3", "references":"Local NWN reference library folder", "idle":"Default idle animation block (optional)"}
 	for key in labels:
 		var label := Label.new()
 		label.text = labels[key]
@@ -54,7 +54,7 @@ static func show_dialog(parent: Node) -> void:
 		browse.pressed.connect(func():
 			var picker := FileDialog.new()
 			picker.access = FileDialog.ACCESS_FILESYSTEM
-			picker.file_mode = FileDialog.FILE_MODE_OPEN_FILE if key in ["python","compiler","idle"] else FileDialog.FILE_MODE_OPEN_DIR
+			picker.file_mode = FileDialog.FILE_MODE_OPEN_FILE if key in ["python","pose_python","compiler","idle"] else FileDialog.FILE_MODE_OPEN_DIR
 			parent.add_child(picker)
 			var accept := func(path): edit.text = path; save_path(key,path); picker.queue_free()
 			picker.file_selected.connect(accept)

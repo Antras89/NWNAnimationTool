@@ -53,6 +53,13 @@ func run() -> void:
 	check(app.rig_controller.selected_components.size() == 2, "Shift adds selection")
 	var arm = app.rig_controller.find_node("rbicep_g")
 	var calf = app.rig_controller.find_node("lshin_g")
+	check(app._attachment_translate_handle != null, "Multi-selection has translation arrows")
+	var arm_pos = arm.global_position
+	var calf_pos = calf.global_position
+	var offset = Vector3(.03,.02,0)
+	app._on_panel_position_changed(arm_pos + offset)
+	check(arm.global_position.is_equal_approx(arm_pos + offset), "Position moves arm")
+	check(calf.global_position.is_equal_approx(calf_pos + offset), "Position moves calf")
 	var arm_before = arm.basis
 	var calf_before = calf.basis
 	var turn = Basis(Vector3.UP, .15)
