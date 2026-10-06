@@ -1,13 +1,14 @@
 extends RefCounted
 
 # Local game data only; no game geometry is bundled with the application.
-static func build() -> MeshInstance3D:
-	var path := "user://saberstaff/saberstaff.json"
+static func build(double_staff: bool = true) -> MeshInstance3D:
+	var path := "user://saberstaff/saberstaff.json" if double_staff else "user://lightsaber/lightsaber.json"
 	if not FileAccess.file_exists(path): return null
 	var data = JSON.parse_string(FileAccess.get_file_as_string(path))
 	if not data is Dictionary or not data.has("nodes"): return null
 	var transforms := {}
 	var mesh := ArrayMesh.new()
+	var emitters: Array[MeshInstance3D] = []
 	for entry in data.nodes:
 		var props: Dictionary = entry[2]
 		var transform := Transform3D.IDENTITY
@@ -19,6 +20,10 @@ static func build() -> MeshInstance3D:
 		var parent: String = str(props.get("parent",["null"])[0]).to_lower()
 		transform = transforms.get(parent,Transform3D.IDENTITY) * transform
 		transforms[str(entry[1]).to_lower()] = transform
+		if entry[0] == "emitter":
+			var emitter := _emitter(props,transform,path.get_base_dir())
+			if emitter != null: emitters.append(emitter)
+		if props.get("render",["1"])[0] == "0": continue
 		if not props.has("verts") or not props.has("faces"): continue
 		var st := SurfaceTool.new()
 		st.begin(Mesh.PRIMITIVE_TRIANGLES)
@@ -43,24 +48,31 @@ static func build() -> MeshInstance3D:
 	result.name = "GameSaberstaff"
 	result.mesh = mesh
 	result.set_meta("game_resource",data.get("resource",""))
-	# Identity transform keeps the MDL's real attachment origin and scale.
-	# Blades are guides; the hilt geometry above is copied from the game.
-	var bounds := mesh.get_aabb()
-	for side in [-1,1]:
-		var guide := MeshInstance3D.new()
-		var cylinder := CylinderMesh.new()
-		cylinder.height = .6
-		cylinder.top_radius = .015
-		cylinder.bottom_radius = .015
-		guide.mesh = cylinder
-		guide.rotation_degrees.x = 90
-		guide.position.z = bounds.position.z - .3 if side < 0 else bounds.end.z + .3
-		var material := StandardMaterial3D.new()
-		material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-		material.albedo_color = Color(.2,.9,1)
-		guide.material_override = material
-		result.add_child(guide)
+	# Preserve original MDL attachment, hierarchy transforms, and emitter placement.
+	for emitter in emitters: result.add_child(emitter)
+	result.set_meta("emitter_count",emitters.size())
 	return result
 
 static func _vector(values: Array) -> Vector3:
 	return Vector3(float(values[0]),float(values[2]),-float(values[1]))
+
+static func _emitter(props: Dictionary, transform: Transform3D, directory: String) -> MeshInstance3D:
+	var texture_path := directory.path_join(str(props.get("texture",[""])[0]).to_lower()+".png")
+	if not FileAccess.file_exists(texture_path): return null
+	var img := Image.load_from_file(ProjectSettings.globalize_path(texture_path))
+	if img == null: return null
+	var result := MeshInstance3D.new()
+	result.name = "GameEmitter"
+	var quad := QuadMesh.new()
+	quad.size = Vector2(float(props.get("sizestart",["1"])[0]),float(props.get("sizestart_y",props.get("sizestart",["1"]))[0]))
+	result.mesh = quad
+	# NWN emitter cards lie in local XY; convert this plane to Godot coordinates.
+	result.transform = transform * Transform3D(Basis(Vector3.RIGHT,-PI/2),Vector3.ZERO)
+	var material := StandardMaterial3D.new()
+	material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	material.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+	material.cull_mode = BaseMaterial3D.CULL_DISABLED
+	material.albedo_texture = ImageTexture.create_from_image(img)
+	result.material_override = material
+	return result

@@ -110,4 +110,6 @@ Limb translation arrows share the selected rotation pivot. Dragging uses a fixed
 
 All / Ctrl+A selects the selectable body parts and moves/rotates the rig root once. Text fields retain their normal Ctrl+A behavior.
 
-An optional local game-hilt preview reads `user://saberstaff/saberstaff.json` (`nodes` from the MDL node parser plus a `resource` name) and adjacent PNG textures named after the MDL bitmaps. Geometry uses original hierarchy transforms, scale and weapon attachment, with no palm-centering offset. Cyan blades remain visual guides. Without local data, the procedural staff preview remains available. No game model or texture is included in the repository.
+An optional local game-hilt preview reads `user://saberstaff/saberstaff.json` (`nodes` from the MDL node parser plus a `resource` name) and adjacent PNG textures named after the MDL bitmaps. Geometry uses original hierarchy transforms, scale and weapon attachment, with no palm-centering offset. Emitter previews use source textures, transforms and sizes as static additive cards; they do not simulate the full NWN particle lifecycle. Without local data, the procedural staff preview remains available. No game model or texture is included in the repository.
+
+Single sabers in R.Wpn and L.Wpn load `user://lightsaber/lightsaber.json` with the same format. The complete b/m/t model parts supply emitter nodes; hidden guide geometry (`render 0`) is excluded while its transforms still position child emitters. DoubleStaff continues to use the separate saberstaff data.
