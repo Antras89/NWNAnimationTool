@@ -72,8 +72,33 @@ func run() -> void:
 	check(app.rig_controller.selected_components.size() == 1, "Shift removes selection")
 	app.rig_controller.select_component("right_forearm", true)
 	check(app.rig_controller.selection_roots().size() == 1, "Parent-child selection avoids double rotation")
+	for part in ["right_upper_arm", "right_forearm", "right_hand", "left_thigh", "left_calf", "left_foot"]:
+		app.rig_controller.select_component(part)
+		check(app._attachment_translate_handle.global_position.is_equal_approx(app.gizmo.target.global_position), "Arrows share rotation pivot: " + part)
+		var start_basis = app.gizmo.target.basis
+		app._rotate_selection(start_basis * Basis(Vector3.UP,.1))
+		await process_frame
+		check(app.gizmo.target.basis.is_equal_approx(start_basis * Basis(Vector3.UP,.1)), "Selected part rotation survives IK: " + part)
+		app._begin_selection_translation()
+		var destination = app._translation_anchor() + Vector3(.02,.01,.01)
+		app._translate_selection(destination)
+		var first = MdlExporter.capture_pose(app.get_node("Rig"))
+		app._translate_selection(destination)
+		var second = MdlExporter.capture_pose(app.get_node("Rig"))
+		for name in first: check(first[name].is_equal_approx(second[name]), "Drag does not accumulate: " + name)
 	app.rig_controller.deselect()
 	check(app.rig_controller.selected_components.is_empty(), "Clear multi-selection")
+	app.rig_controller.select_component("right_thigh")
+	app.get_viewport().gui_release_focus()
+	var before_key = MdlExporter.capture_pose(app.get_node("Rig"))
+	var key = InputEventKey.new()
+	key.keycode = KEY_LEFT
+	key.pressed = true
+	check(app._nudge_selection(key), "Keyboard arrow handled")
+	for name in before_key: check(app.rig_controller.find_node(name).position.is_equal_approx(before_key[name].origin), "Keyboard preserves bone offsets")
+	app._undo()
+	var after_undo = MdlExporter.capture_pose(app.get_node("Rig"))
+	for name in before_key: check(after_undo[name].is_equal_approx(before_key[name]), "Keyboard undo restores pose")
 	app._on_overlay_toggled(true)
 	check(app._nwn_skeleton.visible and app._nwn_skeleton_mesh.get_surface_count() == 1, "Skel displays native hierarchy without source")
 	app._on_overlay_toggled(false)

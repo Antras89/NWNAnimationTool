@@ -172,6 +172,9 @@ func _ready() -> void:
 
 func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventKey and event.pressed:
+		if _nudge_selection(event):
+			get_viewport().set_input_as_handled()
+			return
 		if event.keycode == KEY_Z and event.is_command_or_control_pressed():
 			if event.shift_pressed: _redo()
 			else: _undo()
@@ -533,6 +536,8 @@ func _process(delta: float) -> void:
 	for node in _zero_basis_overrides:
 		if is_instance_valid(node):
 			node.basis = Basis.IDENTITY
+	if _attachment_translate_handle != null and gizmo.target != null:
+		_attachment_translate_handle.global_position = gizmo.target.global_position
 	_refresh_transform_panel()
 	if _nwn_skeleton.visible: _update_nwn_skeleton()
 
@@ -668,6 +673,7 @@ func _setup_attachment_translate_handle(component_id: String) -> void:
 	_attachment_translate_handle.global_position = _translation_anchor()
 	_attachment_translate_handle.moved.connect(_on_attachment_translate_moved.bind(component_id))
 	_attachment_translate_handle.drag_started.connect(_push_undo_snapshot)
+	_attachment_translate_handle.drag_started.connect(_begin_selection_translation)
 
 func _on_attachment_translate_moved(pos: Vector3, _component_id: String) -> void:
 	_translate_selection(pos)
@@ -684,16 +690,29 @@ func _joint_tip(node: Node3D) -> Node3D:
 	return rig_controller.find_node("rootdummy") if node.name == "pelvis_g" else node
 
 func _translation_anchor() -> Vector3:
-	return _joint_tip(rig_controller.selection_roots()[0]).global_position
+	return gizmo.target.global_position
 
 func _can_translate_selection() -> bool:
 	for node in rig_controller.selection_roots():
 		if node.name in ["head_g", "torso_g"]: return false
 	return not rig_controller.selected_components.is_empty()
 
+var _selection_translation_pose: Dictionary = {}
+var _selection_translation_poles: Dictionary = {}
+var _selection_translation_origin := Vector3.ZERO
+
+func _begin_selection_translation() -> void:
+	_selection_translation_origin = _translation_anchor()
+	_selection_translation_pose = MdlExporter.capture_pose($Rig)
+	_selection_translation_poles = _limb_targets.duplicate(true)
+
 func _translate_selection(pos: Vector3) -> void:
 	if not _can_translate_selection(): return
-	var offset := pos - _translation_anchor()
+	if _selection_translation_pose.is_empty(): _begin_selection_translation()
+	# Every drag event starts from the same pose; do not accumulate cursor deltas.
+	for name in _selection_translation_pose:
+		rig_controller.find_node(name).transform = _selection_translation_pose[name]
+	var offset := pos - _selection_translation_origin
 	var nodes: Array[Node3D] = rig_controller.selection_roots()
 	var targets: Array[Vector3] = []
 	for node in nodes: targets.append(_joint_tip(node).global_position + offset)
@@ -705,7 +724,10 @@ func _translate_selection(pos: Vector3) -> void:
 			tip.global_position = target
 		elif not _translation_chain(node).is_empty():
 			var chain := _translation_chain(node)
-			IKSolver.solve_two_bone(chain[0], chain[1], chain[2], target, chain[1].global_position)
+			var limb_id := ""
+			for id in ["right_arm", "left_arm", "right_leg", "left_leg"]:
+				if str(node.name) in rig_controller.get_component_chain(id): limb_id = id
+			IKSolver.solve_two_bone(chain[0], chain[1], chain[2], target, _selection_translation_poles[limb_id]["pole"])
 		elif node.name in ["rhand", "lhand", "lforearm"]:
 			node.global_position = target
 	_resync_limb_targets_from_current_pose()
@@ -725,6 +747,7 @@ func _retire_handle(handle: Node) -> void:
 	handle.queue_free()
 
 func _clear_handles() -> void:
+	_selection_translation_pose.clear()
 	_active_ik_component = ""
 	if _target_handle != null:
 		_retire_handle(_target_handle)
@@ -1052,13 +1075,14 @@ func _refresh_transform_panel() -> void:
 		var node: Node3D = rig_controller.get_component_root_node(component_id)
 		if node != null:
 			if component_id != "pelvis":
-				panel.set_position_fields(_joint_tip(node).global_position)
+				panel.set_position_fields(node.global_position)
 			panel.set_rotation_fields(_basis_to_euler_degrees(node.basis))
 
 func _on_panel_position_changed(v: Vector3) -> void:
 	_push_undo_snapshot()
 	var component_id: String = rig_controller.selected_component
 	if rig_controller.selected_components.size() > 1 or (_active_ik_component == "" and component_id != "pelvis"):
+		_begin_selection_translation()
 		_translate_selection(v)
 		return
 	if component_id == "pelvis":
@@ -2131,3 +2155,15 @@ func _update_nwn_skeleton() -> void:
 			_nwn_skeleton_mesh.surface_add_vertex(p - axis * .012)
 			_nwn_skeleton_mesh.surface_add_vertex(p + axis * .012)
 	_nwn_skeleton_mesh.surface_end()
+
+func _nudge_selection(event: InputEventKey) -> bool:
+	if get_viewport().gui_get_focus_owner() != null or event.is_command_or_control_pressed() or event.alt_pressed: return false
+	if not _can_translate_selection(): return false
+	var directions := {KEY_LEFT:Vector3.LEFT, KEY_RIGHT:Vector3.RIGHT, KEY_UP:Vector3.FORWARD, KEY_DOWN:Vector3.BACK, KEY_PAGEUP:Vector3.UP, KEY_PAGEDOWN:Vector3.DOWN}
+	if not directions.has(event.keycode): return false
+	if _playing: _on_play_toggled(false)
+	var origin := _translation_anchor()
+	if _active_ik_component != "": origin = _limb_targets[_active_ik_component]["target"]
+	elif rig_controller.selected_components.size() == 1 and rig_controller.selected_component == "pelvis": origin = rig_controller.find_node("rootdummy").global_position
+	_on_panel_position_changed(origin + directions[event.keycode] * .01)
+	return true

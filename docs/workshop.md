@@ -105,3 +105,5 @@ Skel displays the native NWN node hierarchy through the mannequin, even without 
 Individual joints and Shift selections expose XYZ translation arrows and numeric Position fields. Image/video pose extraction requires MediaPipe and OpenCV in the configured Pose Python interpreter; the scripts are bundled in exported builds. Video extraction uses timestamped tracking.
 
 Translation arrows on limb segments use the original whole-limb IK behavior: they move the hand/foot target while keeping all bone offsets fixed. Individual segment rotation remains available. Head and torso translation is disabled to prevent disconnected geometry.
+
+Limb translation arrows share the selected rotation pivot. Dragging uses a fixed start pose and the stored IK pole to avoid drift. Arrow keys nudge X/Z by 0.01 units; Page Up/Down nudge Y. Typing in UI fields is unaffected, and nudges support Undo.
