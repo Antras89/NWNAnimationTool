@@ -107,3 +107,7 @@ Individual joints and Shift selections expose XYZ translation arrows and numeric
 Translation arrows on limb segments use the original whole-limb IK behavior: they move the hand/foot target while keeping all bone offsets fixed. Individual segment rotation remains available. Head and torso translation is disabled to prevent disconnected geometry.
 
 Limb translation arrows share the selected rotation pivot. Dragging uses a fixed start pose and the stored IK pole to avoid drift. Arrow keys nudge X/Z by 0.01 units; Page Up/Down nudge Y. Typing in UI fields is unaffected, and nudges support Undo.
+
+All / Ctrl+A selects the selectable body parts and moves/rotates the rig root once. Text fields retain their normal Ctrl+A behavior.
+
+An optional local game-hilt preview reads `user://saberstaff/saberstaff.json` (`nodes` from the MDL node parser plus a `resource` name) and adjacent PNG textures named after the MDL bitmaps. Geometry uses original hierarchy transforms, scale and weapon attachment, with no palm-centering offset. Cyan blades remain visual guides. Without local data, the procedural staff preview remains available. No game model or texture is included in the repository.

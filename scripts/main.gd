@@ -169,13 +169,22 @@ func _ready() -> void:
 	mdl_bank = preload("res://scripts/mdl_bank.gd").new()
 	mdl_bank.name = "MdlBank"
 	add_child(mdl_bank)
+	var all_button := Button.new()
+	all_button.text = "All"
+	all_button.focus_mode = Control.FOCUS_NONE
+	all_button.tooltip_text = "Select all body parts (Ctrl+A)"
+	all_button.pressed.connect(rig_controller.select_all_body)
+	side_panel.viewport_toolbar.add_child(all_button)
 
 func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventKey and event.pressed:
 		if _nudge_selection(event):
 			get_viewport().set_input_as_handled()
 			return
-		if event.keycode == KEY_Z and event.is_command_or_control_pressed():
+		if event.keycode == KEY_A and event.is_command_or_control_pressed() and get_viewport().gui_get_focus_owner() == null:
+			rig_controller.select_all_body()
+			get_viewport().set_input_as_handled()
+		elif event.keycode == KEY_Z and event.is_command_or_control_pressed():
 			if event.shift_pressed: _redo()
 			else: _undo()
 			get_viewport().set_input_as_handled()
@@ -720,7 +729,7 @@ func _translate_selection(pos: Vector3) -> void:
 		var node := nodes[i]
 		var tip := _joint_tip(node)
 		var target := targets[i]
-		if node.name == "pelvis_g":
+		if node.name in ["pelvis_g", "rootdummy"]:
 			tip.global_position = target
 		elif not _translation_chain(node).is_empty():
 			var chain := _translation_chain(node)

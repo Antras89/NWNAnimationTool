@@ -368,6 +368,14 @@ func _add_weapon(hand_node_name: String, component_id: String, color: Color) -> 
 	var hand := _find(rig_root, hand_node_name)
 	if hand == null:
 		return
+	if component_id == "right_weapon" and _double_staff:
+		var actual := preload("res://scripts/game_staff_preview.gd").build()
+		if actual != null:
+			hand.add_child(actual)
+			_weapon_meshes[hand_node_name] = actual
+			if rig_controller != null: rig_controller.set_component_pick_mesh(component_id,hand_node_name,actual)
+			set_status("Game saberstaff hilt: " + str(actual.get_meta("game_resource")) + " (original scale and attachment)")
+			return
 	var mesh := CylinderMesh.new()
 	var mi := MeshInstance3D.new()
 

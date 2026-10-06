@@ -34,7 +34,10 @@ func run() -> void:
 		app.side_panel._on_double_staff_toggled(staff)
 		var blade = app.side_panel._weapon_meshes.rhand
 		var hand = app.rig_controller.find_node("rhand_g")
-		check(blade.to_global(Vector3(0,-.18,0) if staff else blade.get_node("LightsaberHilt").position).distance_to(hand.to_global(hand.mesh.get_aabb().get_center()))<.0001,"Centered hilt")
+		if blade.has_meta("game_resource"):
+			check(blade.transform.is_equal_approx(Transform3D.IDENTITY),"Real game hilt preserves attachment")
+		else:
+			check(blade.to_global(Vector3(0,-.18,0) if staff else blade.get_node("LightsaberHilt").position).distance_to(hand.to_global(hand.mesh.get_aabb().get_center()))<.0001,"Centered hilt")
 	app.qol._pin("right_leg",true)
 	var foot = app.rig_controller.find_node("rfoot_g")
 	var pinned: Vector3 = foot.global_position
@@ -103,5 +106,12 @@ func run() -> void:
 	check(app._nwn_skeleton.visible and app._nwn_skeleton_mesh.get_surface_count() == 1, "Skel displays native hierarchy without source")
 	app._on_overlay_toggled(false)
 	check(not app._nwn_skeleton.visible, "Skel hides native hierarchy")
+	app.rig_controller.select_all_body()
+	check(app.rig_controller.all_body_selected(), "All body parts selected")
+	check(app.rig_controller.selection_roots().size()==1, "Select all transforms root once")
+	var root_node=app.rig_controller.find_node("rootdummy")
+	var origin=root_node.global_position
+	app._on_panel_position_changed(origin+Vector3(.05,0,0))
+	check(root_node.global_position.is_equal_approx(origin+Vector3(.05,0,0)), "Select all moves complete rig")
 	print("WORKSHOP_SMOKE failures=",failures.size())
 	quit(0 if failures.is_empty() else 1)

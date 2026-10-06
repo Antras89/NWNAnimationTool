@@ -183,6 +183,7 @@ func select_component(component_id: String, additive: bool = false) -> void:
 	else: component_selected.emit(selected_component)
 
 func selection_roots() -> Array[Node3D]:
+	if all_body_selected(): return [find_node("rootdummy")]
 	var nodes: Array[Node3D] = []
 	for id in selected_components:
 		var node := get_component_root_node(id)
@@ -269,3 +270,21 @@ func _selection_meshes(id: String) -> Array:
 		for mesh in _component_meshes.get(part, []):
 			if mesh not in meshes: meshes.append(mesh)
 	return meshes
+
+func body_component_ids() -> Array[String]:
+	var ids: Array[String] = []
+	for comp in RigComponents.definitions():
+		if not comp.is_ik and comp.id not in ["right_weapon", "left_weapon", "shield"]: ids.append(comp.id)
+	return ids
+
+func all_body_selected() -> bool:
+	for id in body_component_ids():
+		if id not in selected_components: return false
+	return true
+
+func select_all_body() -> void:
+	_clear_highlight()
+	selected_components = body_component_ids()
+	selected_component = "pelvis"
+	for id in selected_components: _apply_highlight(id)
+	component_selected.emit(selected_component)
