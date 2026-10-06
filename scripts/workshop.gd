@@ -20,6 +20,10 @@ var entries: ItemList
 var folder: OptionButton
 var search: LineEdit
 var library: Array = []
+var custom_pose_folders: Array[String] = []
+var library_config_path := "user://pose-library.cfg"
+var pose_folder_dialog: FileDialog
+var library_status: Label
 var thumb_world: Dictionary
 var thumb_busy := false
 var thumb_generation := 0
@@ -104,6 +108,7 @@ func _build_panel() -> void:
 	controls.left_leg = _check(box, "Pin left foot", func(v): _pin("left_leg", v))
 	controls.right_leg = _check(box, "Pin right foot", func(v): _pin("right_leg", v))
 	_label(box, "Locks affect editing; playback shows saved keys. Save key after editing.")
+	_button(box, "Add pose folder...", _choose_pose_folder)
 	_button(box, "Pose library / NWN1 references / Compare...", func():
 		panel.hide()
 		browser.popup_centered(Vector2i(780, 580))
@@ -327,6 +332,25 @@ func _build_library() -> void:
 	for title in ["F1", "F2", "F3", "NWN1 originals", "My poses"]: folder.add_item(title)
 	folder.item_selected.connect(func(_i): _refresh_library())
 	box.add_child(folder)
+	var config := ConfigFile.new()
+	if config.load(library_config_path) == OK:
+		for path in config.get_value("library","folders",[]):
+			custom_pose_folders.append(str(path))
+			folder.add_item(str(path))
+	var folders_row := HBoxContainer.new()
+	box.add_child(folders_row)
+	_button(folders_row,"Add folder...",_choose_pose_folder)
+	_button(folders_row,"Refresh",_refresh_library)
+	library_status = Label.new()
+	library_status.custom_minimum_size.x = 720
+	library_status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	box.add_child(library_status)
+	pose_folder_dialog = FileDialog.new()
+	pose_folder_dialog.access = FileDialog.ACCESS_FILESYSTEM
+	pose_folder_dialog.file_mode = FileDialog.FILE_MODE_OPEN_DIR
+	pose_folder_dialog.title = "Choose a pose / animation folder"
+	app.add_child(pose_folder_dialog)
+	pose_folder_dialog.dir_selected.connect(_add_pose_folder)
 	search = LineEdit.new()
 	search.placeholder_text = "Filter by name..."
 	search.text_changed.connect(func(_s): _refresh_library())
@@ -343,12 +367,14 @@ func _build_library() -> void:
 	var row := HBoxContainer.new()
 	box.add_child(row)
 	_button(row, "Open animation", _library_open)
+	_button(row, "Preview animation", _library_preview)
 	_button(row, "Use first pose", _library_pose)
 	_button(row, "Compare", _compare_selected)
 	_button(row, "Save current pose", _save_library_pose)
 	_label(box, "Original references keep NWN axes and timing. Double-click opens an animation.")
 
 func _library_path() -> String:
+	if folder.selected >= 5: return custom_pose_folders[folder.selected - 5]
 	if folder.selected == 3: return WorkshopSettings.path_value("references")
 	if folder.selected == 4:
 		DirAccess.make_dir_recursive_absolute("user://poses")
@@ -360,7 +386,7 @@ func _refresh_library() -> void:
 	entries.clear()
 	library.clear()
 	var path := _library_path()
-	var files := DirAccess.get_files_at(path)
+	var files := _pose_files(path, folder.selected >= 5)
 	files.sort()
 	for file in files:
 		if file.get_extension().to_lower() not in ["txt", "mdl"]: continue
@@ -370,6 +396,8 @@ func _refresh_library() -> void:
 		if display_name.contains("__"): display_name = display_name.split("__")[1]
 		entries.add_item(display_name)
 		entries.set_item_tooltip(entries.item_count - 1, path.path_join(file))
+	library_status.text = "%d animations | %s" % [library.size(), path]
+	if not DirAccess.dir_exists_absolute(path): library_status.text = "Folder not found: " + path
 	if not thumb_busy: _generate_thumbnails()
 
 func _find(root: Node, name_text: String) -> Node3D:
@@ -549,3 +577,49 @@ func _update_comparison() -> void:
 		view.camera.transform = cam.transform
 		view.camera.projection = cam.projection
 		view.camera.size = cam.size
+
+func _choose_pose_folder() -> void:
+	pose_folder_dialog.popup_centered_ratio(.75)
+
+func _add_pose_folder(path: String) -> void:
+	path = path.simplify_path()
+	if not DirAccess.dir_exists_absolute(path):
+		app.side_panel.set_status("Folder not found: " + path)
+		return
+	var index := custom_pose_folders.find(path)
+	if index < 0:
+		custom_pose_folders.append(path)
+		folder.add_item(path)
+		index = custom_pose_folders.size() - 1
+	var config := ConfigFile.new()
+	config.set_value("library","folders",custom_pose_folders)
+	var error := config.save(library_config_path)
+	if error != OK: app.side_panel.set_status("Folder added for this session; could not save folder list.")
+	folder.select(5 + index)
+	search.text = ""
+	browser.popup_centered(Vector2i(820,600))
+	_refresh_library()
+
+func _pose_files(path: String, recursive: bool, depth: int = 0) -> PackedStringArray:
+	var files := PackedStringArray()
+	if not DirAccess.dir_exists_absolute(path): return files
+	for name in DirAccess.get_files_at(path):
+		if name.get_extension().to_lower() in ["txt","mdl"]: files.append(name)
+	if recursive and depth < 8:
+		for name in DirAccess.get_directories_at(path):
+			if name.begins_with("."): continue
+			for child in _pose_files(path.path_join(name),true,depth+1): files.append(name.path_join(child))
+	return files
+
+func _library_preview() -> void:
+	var path := _selected_path()
+	if path.is_empty(): return
+	if not app.mdl_bank.recognizes(path) and MdlImporter.parse(FileAccess.get_file_as_string(path),app.get_node("Rig")) == null:
+		app.side_panel.set_status("Cannot preview: this file contains no supported animation.")
+		return
+	app._on_play_toggled(false)
+	_library_open()
+	# A full bank first asks the user to choose a clip in its own dialog.
+	if not app.mdl_bank.recognizes(path) and not app._keyframes.is_empty():
+		app.side_panel.set_playing(true)
+		app._on_play_toggled(true)
