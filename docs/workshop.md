@@ -103,3 +103,5 @@ Shift-click adds/removes parts from the selection; rotation rings and numeric ro
 Skel displays the native NWN node hierarchy through the mannequin, even without an imported motion source, and follows the current pose.
 
 Individual joints and Shift selections expose XYZ translation arrows and numeric Position fields. Image/video pose extraction requires MediaPipe and OpenCV in the configured Pose Python interpreter; the scripts are bundled in exported builds. Video extraction uses timestamped tracking.
+
+Translation arrows on limb segments use the original whole-limb IK behavior: they move the hand/foot target while keeping all bone offsets fixed. Individual segment rotation remains available. Head and torso translation is disabled to prevent disconnected geometry.

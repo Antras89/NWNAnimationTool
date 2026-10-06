@@ -54,12 +54,12 @@ func run() -> void:
 	var arm = app.rig_controller.find_node("rbicep_g")
 	var calf = app.rig_controller.find_node("lshin_g")
 	check(app._attachment_translate_handle != null, "Multi-selection has translation arrows")
-	var arm_pos = arm.global_position
-	var calf_pos = calf.global_position
-	var offset = Vector3(.03,.02,0)
-	app._on_panel_position_changed(arm_pos + offset)
-	check(arm.global_position.is_equal_approx(arm_pos + offset), "Position moves arm")
-	check(calf.global_position.is_equal_approx(calf_pos + offset), "Position moves calf")
+	var offsets = MdlExporter.capture_pose(app.get_node("Rig"))
+	var arm_before_move = arm.basis
+	app._on_panel_position_changed(app._translation_anchor() + Vector3(.08,0,.06))
+	check(not arm.basis.is_equal_approx(arm_before_move), "Arrows rotate connected joint")
+	for name in offsets:
+		check(app.rig_controller.find_node(name).position.is_equal_approx(offsets[name].origin), "Bone connection preserved: " + name)
 	var arm_before = arm.basis
 	var calf_before = calf.basis
 	var turn = Basis(Vector3.UP, .15)

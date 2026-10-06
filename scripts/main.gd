@@ -596,7 +596,7 @@ func _on_component_selected(component_id: String) -> void:
 
 	side_panel.transform_panel.visible = true
 	side_panel.transform_panel.set_label(", ".join(rig_controller.selected_components))
-	side_panel.transform_panel.set_position_enabled(true)
+	side_panel.transform_panel.set_position_enabled(is_ik or _can_translate_selection())
 
 func _on_component_deselected() -> void:
 	_resync_limb_targets_from_current_pose()
@@ -657,6 +657,7 @@ func _on_root_height_moved(pos: Vector3) -> void:
 ## useful to reposition too, e.g. nudging a weapon's grip point or a
 ## shield's offset without disturbing the limb that's holding it.
 func _setup_attachment_translate_handle(component_id: String) -> void:
+	if not _can_translate_selection(): return
 	var node: Node3D = rig_controller.get_component_root_node(component_id)
 	if node == null:
 		return
@@ -664,19 +665,51 @@ func _setup_attachment_translate_handle(component_id: String) -> void:
 	_attachment_translate_handle.color = Color(1.0, 0.6, 0.9)
 	add_child(_attachment_translate_handle)
 	_attachment_translate_handle.camera = $Camera3D
-	_attachment_translate_handle.global_position = gizmo.target.global_position
+	_attachment_translate_handle.global_position = _translation_anchor()
 	_attachment_translate_handle.moved.connect(_on_attachment_translate_moved.bind(component_id))
 	_attachment_translate_handle.drag_started.connect(_push_undo_snapshot)
 
 func _on_attachment_translate_moved(pos: Vector3, _component_id: String) -> void:
 	_translate_selection(pos)
 
+func _translation_chain(node: Node3D) -> Array[Node3D]:
+	for id in ["right_arm", "left_arm", "right_leg", "left_leg"]:
+		if str(node.name) in rig_controller.get_component_chain(id):
+			return rig_controller.get_chain_nodes(id)
+	return []
+
+func _joint_tip(node: Node3D) -> Node3D:
+	var chain := _translation_chain(node)
+	if chain.size() == 3: return chain[2]
+	return rig_controller.find_node("rootdummy") if node.name == "pelvis_g" else node
+
+func _translation_anchor() -> Vector3:
+	return _joint_tip(rig_controller.selection_roots()[0]).global_position
+
+func _can_translate_selection() -> bool:
+	for node in rig_controller.selection_roots():
+		if node.name in ["head_g", "torso_g"]: return false
+	return not rig_controller.selected_components.is_empty()
+
 func _translate_selection(pos: Vector3) -> void:
-	if gizmo.target == null: return
-	var offset: Vector3 = pos - gizmo.target.global_position
-	for node in rig_controller.selection_roots(): node.global_position += offset
+	if not _can_translate_selection(): return
+	var offset := pos - _translation_anchor()
+	var nodes: Array[Node3D] = rig_controller.selection_roots()
+	var targets: Array[Vector3] = []
+	for node in nodes: targets.append(_joint_tip(node).global_position + offset)
+	for i in nodes.size():
+		var node := nodes[i]
+		var tip := _joint_tip(node)
+		var target := targets[i]
+		if node.name == "pelvis_g":
+			tip.global_position = target
+		elif not _translation_chain(node).is_empty():
+			var chain := _translation_chain(node)
+			IKSolver.solve_two_bone(chain[0], chain[1], chain[2], target, chain[1].global_position)
+		elif node.name in ["rhand", "lhand", "lforearm"]:
+			node.global_position = target
 	_resync_limb_targets_from_current_pose()
-	if _attachment_translate_handle != null: _attachment_translate_handle.global_position = pos
+	if _attachment_translate_handle != null: _attachment_translate_handle.global_position = _translation_anchor()
 
 
 ## queue_free() only removes the node at the end of this frame — until then
@@ -993,7 +1026,7 @@ func _refresh_transform_panel() -> void:
 	if not panel.visible or panel.any_field_focused():
 		return
 	if rig_controller.selected_components.size() > 1:
-		panel.set_position_fields(gizmo.target.global_position)
+		panel.set_position_fields(_translation_anchor())
 		panel.set_rotation_fields(_basis_to_euler_degrees(gizmo.target.basis))
 		return
 	var component_id: String = rig_controller.selected_component
@@ -1019,7 +1052,7 @@ func _refresh_transform_panel() -> void:
 		var node: Node3D = rig_controller.get_component_root_node(component_id)
 		if node != null:
 			if component_id != "pelvis":
-				panel.set_position_fields(node.global_position)
+				panel.set_position_fields(_joint_tip(node).global_position)
 			panel.set_rotation_fields(_basis_to_euler_degrees(node.basis))
 
 func _on_panel_position_changed(v: Vector3) -> void:
