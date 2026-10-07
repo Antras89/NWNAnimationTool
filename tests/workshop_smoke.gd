@@ -30,6 +30,26 @@ func run() -> void:
 	app.side_panel.set_anim_name("test")
 	app._on_pose_memory_save(0)
 	check(app._pose_memory_names[0] == "test","Named pose memory")
+	check(app.side_panel._pose_memory_load_buttons.size() == 5, "Five pose memory slots")
+	for slot in 5:
+		check(app.side_panel._sidebar.has_node("PoseMemory/Slot%d/OpenButton" % (slot + 1)), "Open button on every slot")
+	var memory_path := "user://memory-smoke.txt"
+	var memory_file := FileAccess.open(memory_path, FileAccess.WRITE)
+	memory_file.store_string(text)
+	memory_file.close()
+	app._on_open_file_requested(memory_path, 4)
+	check(app._pose_memory_names[4] == "test", "Open remembers animation name")
+	check(app._pose_memory_clips[4].keyframes.size() == 3, "Open stores complete animation")
+	app._keyframes.clear()
+	app._on_pose_memory_load(4)
+	check(app._keyframes.size() == 3 and app._anim_length == 1, "Load restores full animation and duration")
+	app._keyframes[0].time = .1
+	check(app._pose_memory_clips[4].keyframes[0].time == 0, "Saved animation is independent of editing")
+	app._on_open_file_requested("user://missing-memory-clip.txt", 4)
+	check(app._pose_memory_clips[4].keyframes.size() == 3, "Failed open preserves slot")
+	app._on_pose_memory_save(4)
+	check(app._pose_memory_clips[4] == null, "Save keeps original single-pose behavior")
+	DirAccess.remove_absolute(memory_path)
 	for staff in [false,true]:
 		app.side_panel._on_double_staff_toggled(staff)
 		var blade = app.side_panel._weapon_meshes.rhand

@@ -145,6 +145,7 @@ func _ready() -> void:
 	side_panel.ai_bulk_requested.connect(_on_ai_bulk_requested)
 	side_panel.pose_memory_save_requested.connect(_on_pose_memory_save)
 	side_panel.pose_memory_load_requested.connect(_on_pose_memory_load)
+	side_panel.pose_memory_open_requested.connect(_on_pose_memory_open)
 	side_panel.video_pose_open_requested.connect(_on_video_pose_open)
 	_setup_video_pose_panel()
 
@@ -170,6 +171,8 @@ func _ready() -> void:
 	mdl_bank = preload("res://scripts/mdl_bank.gd").new()
 	mdl_bank.name = "MdlBank"
 	add_child(mdl_bank)
+	mdl_bank.dialog.canceled.connect(func(): _pose_memory_pending_slot = -1)
+	mdl_bank.dialog.confirmed.connect(func(): _pose_memory_pending_slot = -1)
 	var all_button := Button.new()
 	all_button.text = "All"
 	all_button.focus_mode = Control.FOCUS_NONE
@@ -1126,7 +1129,9 @@ func _rotate_selection(value: Basis) -> void:
 		gizmo.target.basis = value
 	_resync_limb_targets_from_current_pose()
 
-func _on_open_file_requested(path: String) -> void:
+func _on_open_file_requested(path: String, memory_slot: int = -1) -> void:
+	if mdl_bank == null or not mdl_bank.loading_clip:
+		_pose_memory_pending_slot = memory_slot
 	if mdl_bank != null and not mdl_bank.loading_clip:
 		if mdl_bank.recognizes(path):
 			mdl_bank.open_bank(path)
@@ -1159,6 +1164,12 @@ func _on_open_file_requested(path: String) -> void:
 	side_panel.timeline.set_current_time(0.0)
 	_apply_pose_at_time(0.0)
 	side_panel.set_status("Opened: %s" % path)
+	if _pose_memory_pending_slot >= 0:
+		var slot := _pose_memory_pending_slot
+		_pose_memory_pending_slot = -1
+		_on_pose_memory_save(slot)
+		_pose_memory_clips[slot] = {"keyframes": _keyframes.duplicate(true), "length": _anim_length}
+		side_panel.set_status("Animation saved to slot %d." % (slot + 1))
 
 
 
@@ -1474,11 +1485,27 @@ func _apply_glb_source_xform() -> void:
 	_retarget_anim_scene.position = side_panel.get_source_xform("glb").origin
 	_sync_retarget_overlay(side_panel.timeline.current_time)
 
-# Pose memory slots (3 session-only snapshots)
-var _pose_memory: Array = [null, null, null]  # each entry is a snapshot dict or null
-var _pose_memory_names: Array[String] = ["", "", ""]
+# Five session-only slots: Save stores a pose; Open stores a complete animation.
+var _pose_memory: Array = [null, null, null, null, null]  # pose snapshots
+var _pose_memory_names: Array[String] = ["", "", "", "", ""]
+var _pose_memory_clips: Array = [null, null, null, null, null]
+var _pose_memory_pending_slot: int = -1
+
+func _on_pose_memory_open(slot: int) -> void:
+	var picker := FileDialog.new()
+	picker.title = "Open animation into slot %d" % (slot + 1)
+	picker.access = FileDialog.ACCESS_FILESYSTEM
+	picker.file_mode = FileDialog.FILE_MODE_OPEN_FILE
+	picker.filters = PackedStringArray(["*.txt, *.mdl ; NWN animations and models"])
+	add_child(picker)
+	picker.file_selected.connect(func(path):
+		_on_open_file_requested(path, slot)
+		picker.queue_free())
+	picker.canceled.connect(picker.queue_free)
+	picker.popup_centered_ratio(.65)
 
 func _on_pose_memory_save(slot: int) -> void:
+	_pose_memory_clips[slot] = null
 	_pose_memory[slot] = MdlExporter.capture_pose($Rig)
 	_pose_memory_names[slot] = side_panel.get_anim_name() if not side_panel.get_anim_name().is_empty() else "Untitled pose"
 	side_panel.set_pose_memory_slot_name(slot, _pose_memory_names[slot])
@@ -1490,6 +1517,20 @@ func _on_pose_memory_load(slot: int) -> void:
 		return
 	var snap: Dictionary = _pose_memory[slot]
 	_push_undo_snapshot()
+	if _pose_memory_clips[slot] != null:
+		_on_play_toggled(false)
+		rig_controller.deselect()
+		if qol != null: qol.release_constraints()
+		if mdl_bank != null: mdl_bank.active_clip = ""
+		_keyframes = _pose_memory_clips[slot].keyframes.duplicate(true)
+		_anim_length = _pose_memory_clips[slot].length
+		side_panel.set_anim_name(_pose_memory_names[slot])
+		side_panel.set_duration(_anim_length)
+		_refresh_timeline_markers()
+		side_panel.timeline.set_current_time(0.0)
+		_apply_pose_at_time(0.0)
+		side_panel.set_status("Animation loaded from slot %d." % (slot + 1))
+		return
 	_apply_transforms(snap)
 	side_panel.set_status("Pose loaded from slot %d." % (slot + 1))
 

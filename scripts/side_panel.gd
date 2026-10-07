@@ -28,6 +28,7 @@ var _show_hilt := true
 
 signal pose_memory_save_requested(slot: int)
 signal pose_memory_load_requested(slot: int)
+signal pose_memory_open_requested(slot: int)
 signal ai_pose_image_selected(path: String)
 signal ai_pose_apply_requested()
 signal ai_ground_toggled(enabled: bool)
@@ -171,13 +172,24 @@ func _ready() -> void:
 		bone_config_panel.visible = true)
 	bake_button.pressed.connect(func(): retarget_bake_requested.emit())
 
-	for i in 3:
+	for i in range(3, 5):
+		var extra := _sidebar.get_node("PoseMemory/Slot3").duplicate()
+		extra.name = "Slot%d" % (i + 1)
+		extra.get_node("Label").text = "%d. Empty" % (i + 1)
+		_sidebar.get_node("PoseMemory").add_child(extra)
+	for i in 5:
 		var slot_name := "Slot%d" % (i + 1)
 		var save_btn: Button = _sidebar.get_node("PoseMemory/%s/Actions/SaveButton" % slot_name)
 		var load_btn: Button = _sidebar.get_node("PoseMemory/%s/Actions/LoadButton" % slot_name)
 		_pose_memory_load_buttons.append(load_btn)
 		save_btn.pressed.connect(pose_memory_save_requested.emit.bind(i))
 		load_btn.pressed.connect(pose_memory_load_requested.emit.bind(i))
+		var open_btn := Button.new()
+		open_btn.name = "OpenButton"
+		open_btn.text = "Open..."
+		open_btn.tooltip_text = "Open an animation and remember it in this slot"
+		_sidebar.get_node("PoseMemory/%s" % slot_name).add_child(open_btn)
+		open_btn.pressed.connect(pose_memory_open_requested.emit.bind(i))
 
 	image_pose_panel.get_node("TitleRow/CloseButton").pressed.connect(func(): set_image_panel_open(false))
 	image_pose_panel.get_node("Scroll/Body/BulkButton").pressed.connect(func(): ai_bulk_input_dialog.popup_centered_ratio(0.6))
