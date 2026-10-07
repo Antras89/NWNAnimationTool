@@ -84,6 +84,7 @@ func _ready() -> void:
 	get_window().title = "NWNAnimationTool"
 	rig_controller.camera = $Camera3D
 	rig_controller.rig_root = $Rig
+	preload("res://scripts/game_staff_preview.gd").apply_hands($Rig,_current_model_path.ends_with("a_fa.glb"))
 	rig_controller.setup()
 	rig_controller.component_selected.connect(_on_component_selected)
 	rig_controller.component_deselected.connect(_on_component_deselected)
@@ -315,6 +316,7 @@ func _on_gender_selected(model_path: String) -> void:
 	parent.add_child(new_rig)
 	parent.move_child(new_rig, idx)
 
+	preload("res://scripts/game_staff_preview.gd").apply_hands(new_rig,model_path.ends_with("a_fa.glb"))
 	rig_controller.rebuild(new_rig)
 	side_panel.rig_root = new_rig
 

@@ -3,6 +3,9 @@ extends RefCounted
 # Local game data only; no game geometry is bundled with the application.
 static func build(double_staff: bool = true) -> MeshInstance3D:
 	var path := "user://saberstaff/saberstaff.json" if double_staff else "user://lightsaber/lightsaber.json"
+	return build_file(path)
+
+static func build_file(path: String) -> MeshInstance3D:
 	if not FileAccess.file_exists(path): return null
 	var data = JSON.parse_string(FileAccess.get_file_as_string(path))
 	if not data is Dictionary or not data.has("nodes"): return null
@@ -76,3 +79,14 @@ static func _emitter(props: Dictionary, transform: Transform3D, directory: Strin
 	material.albedo_texture = ImageTexture.create_from_image(img)
 	result.material_override = material
 	return result
+
+static func apply_hands(rig: Node3D, female: bool) -> void:
+	for side in ["l","r"]:
+		var resource: String = ("pfh0" if female else "pmh0") + "_hand" + side + "008"
+		var source := build_file("user://hands008/" + resource + ".json")
+		if source == null: continue
+		var hand := rig.find_child(side + "hand_g",true,false) as MeshInstance3D
+		if hand != null:
+			hand.mesh = source.mesh
+			hand.set_meta("hand_resource",resource)
+		source.free()

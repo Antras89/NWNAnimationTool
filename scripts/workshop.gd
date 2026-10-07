@@ -419,6 +419,7 @@ func _make_view(parent: Node, size: Vector2i) -> Dictionary:
 	viewport.add_child(root)
 	var rig: Node3D = load(app._current_model_path).instantiate()
 	root.add_child(rig)
+	preload("res://scripts/game_staff_preview.gd").apply_hands(rig,app._current_model_path.ends_with("a_fa.glb"))
 	app._apply_component_materials(rig)
 	for node_name in ["cloak_g", "Cloak_g", "belt_g1"]:
 		var node := _find(rig, node_name)

@@ -115,3 +115,5 @@ An optional local game-hilt preview reads `user://saberstaff/saberstaff.json` (`
 Single sabers in R.Wpn and L.Wpn load `user://lightsaber/lightsaber.json` with the same format. The complete b/m/t model parts supply emitter nodes; hidden guide geometry (`render 0`) is excluded while its transforms still position child emitters. DoubleStaff continues to use the separate saberstaff data.
 
 Workshop > Add pose folder opens a directory picker. Custom folders are remembered across restarts; the library lists TXT/MDL animations from subfolders, supports Refresh and name filtering, and Preview animation opens and plays a selected clip. Full MDL banks open the clip-selection dialog first.
+
+Optional local hand part 008 previews read the male/female left/right model JSON files from user://hands008. They replace only hand mesh geometry before pick-collider creation, preserving bone transforms and weapon attachments. Mannequin selection colors are retained; library thumbnails use the same meshes. No hand assets are committed.
