@@ -1589,18 +1589,7 @@ func _show_ai_landmark_overlay(world_landmarks: Array) -> void:
 		elif left_hip_node != null:
 			rig_hip_center = left_hip_node.global_position
 
-		# Estimate scale: MediaPipe shoulder width in metres vs NWN shoulder width
-		var mp_left_shoulder := Vector3(-world_landmarks[11]["x"], -world_landmarks[11]["y"], world_landmarks[11]["z"])
-		var mp_right_shoulder := Vector3(-world_landmarks[12]["x"], -world_landmarks[12]["y"], world_landmarks[12]["z"])
-		var mp_shoulder_width: float = (mp_left_shoulder - mp_right_shoulder).length()
-
-		var nwn_left: Node3D = rig_controller.find_node("lbicep_g")
-		var nwn_right: Node3D = rig_controller.find_node("rbicep_g")
-		var nwn_shoulder_width: float = 0.3  # fallback
-		if nwn_left != null and nwn_right != null:
-			nwn_shoulder_width = (nwn_left.global_position - nwn_right.global_position).length()
-
-		_ai_scale_factor = nwn_shoulder_width / max(mp_shoulder_width, 0.001)
+		_ai_scale_factor = AIPoseApplier.estimate_scale(world_landmarks, $Rig)
 		_ai_origin = rig_hip_center
 		_ai_overlay_calibrated = true
 
@@ -1928,25 +1917,13 @@ func _compute_video_bake_params() -> Dictionary:
 	if lthigh != null and rthigh != null:
 		rig_hip_center = (lthigh.global_position + rthigh.global_position) * 0.5
 
-	var nwn_left: Node3D = rig_controller.find_node("lbicep_g")
-	var nwn_right: Node3D = rig_controller.find_node("rbicep_g")
-	var nwn_shoulder_width := 0.3
-	if nwn_left != null and nwn_right != null:
-		nwn_shoulder_width = (nwn_left.global_position - nwn_right.global_position).length()
-
-	# Use the first frame with a good shoulder reading to fix the scale
-	var scale_factor := 1.0
+	# Median over several sampled frames also reduces first-frame detection noise.
+	var scales: Array[float] = []
+	for i in range(min(15, _video_extracted_frames.size())):
+		scales.append(AIPoseApplier.estimate_scale(_video_extracted_frames[i]["world_landmarks"], $Rig))
+	scales.sort()
+	var scale_factor: float = scales[scales.size() / 2] if not scales.is_empty() else 1.0
 	var origin := rig_hip_center
-	for frame_data in _video_extracted_frames:
-		var lms: Array = frame_data["world_landmarks"]
-		if lms.size() < 33:
-			continue
-		var mp_ls := Vector3(-lms[11]["x"], -lms[11]["y"], lms[11]["z"])
-		var mp_rs := Vector3(-lms[12]["x"], -lms[12]["y"], lms[12]["z"])
-		var mp_shoulder_width := (mp_ls - mp_rs).length()
-		if mp_shoulder_width > 0.001:
-			scale_factor = nwn_shoulder_width / mp_shoulder_width
-			break
 
 	# World tilt: auto-level on frame 1 (assumed grounded/standing).
 	var first_landmarks: Array = _video_extracted_frames[0]["world_landmarks"]
