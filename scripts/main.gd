@@ -1492,17 +1492,7 @@ var _pose_memory_clips: Array = [null, null, null, null, null]
 var _pose_memory_pending_slot: int = -1
 
 func _on_pose_memory_open(slot: int) -> void:
-	var picker := FileDialog.new()
-	picker.title = "Open animation into slot %d" % (slot + 1)
-	picker.access = FileDialog.ACCESS_FILESYSTEM
-	picker.file_mode = FileDialog.FILE_MODE_OPEN_FILE
-	picker.filters = PackedStringArray(["*.txt, *.mdl ; NWN animations and models"])
-	add_child(picker)
-	picker.file_selected.connect(func(path):
-		_on_open_file_requested(path, slot)
-		picker.queue_free())
-	picker.canceled.connect(picker.queue_free)
-	picker.popup_centered_ratio(.65)
+	qol.open_library(slot)
 
 func _on_pose_memory_save(slot: int) -> void:
 	_pose_memory_clips[slot] = null

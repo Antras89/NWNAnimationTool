@@ -187,7 +187,7 @@ func _ready() -> void:
 		var open_btn := Button.new()
 		open_btn.name = "OpenButton"
 		open_btn.text = "Open..."
-		open_btn.tooltip_text = "Open an animation and remember it in this slot"
+		open_btn.tooltip_text = "Open Pose Library and remember the selected animation in this slot"
 		_sidebar.get_node("PoseMemory/%s" % slot_name).add_child(open_btn)
 		open_btn.pressed.connect(pose_memory_open_requested.emit.bind(i))
 

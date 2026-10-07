@@ -20,6 +20,7 @@ var entries: ItemList
 var folder: OptionButton
 var search: LineEdit
 var library: Array = []
+var library_memory_slot: int = -1
 var custom_pose_folders: Array[String] = []
 var library_config_path := "user://pose-library.cfg"
 var pose_folder_dialog: FileDialog
@@ -110,9 +111,7 @@ func _build_panel() -> void:
 	_label(box, "Locks affect editing; playback shows saved keys. Save key after editing.")
 	_button(box, "Add pose folder...", _choose_pose_folder)
 	_button(box, "Pose library / NWN1 references / Compare...", func():
-		panel.hide()
-		browser.popup_centered(Vector2i(780, 580))
-		_refresh_library())
+		open_library())
 	_label(box, "Keyframes — select a key, name it or change its time")
 	key_list = ItemList.new()
 	key_list.custom_minimum_size = Vector2(480, 130)
@@ -322,8 +321,17 @@ func _update_trail() -> void:
 	mesh.surface_end()
 	trail.mesh = mesh
 
+func open_library(memory_slot: int = -1) -> void:
+	library_memory_slot = memory_slot
+	panel.hide()
+	browser.title = "Pose library — slot %d: choose an animation" % (memory_slot + 1) if memory_slot >= 0 else "Pose library — F1 / F2 / F3 / NWN1 originals"
+	browser.popup_centered(Vector2i(780, 580))
+	_refresh_library()
+
 func _build_library() -> void:
 	browser = AcceptDialog.new()
+	browser.visibility_changed.connect(func():
+		if not browser.visible: library_memory_slot = -1)
 	browser.title = "Pose library — F1 / F2 / F3 / NWN1 originals"
 	app.add_child(browser)
 	var box := VBoxContainer.new()
@@ -488,10 +496,13 @@ func _selected_path() -> String:
 func _library_open() -> void:
 	var path := _selected_path()
 	if path.is_empty(): return
-	app._on_open_file_requested(path)
+	app._on_open_file_requested(path, library_memory_slot)
 	browser.hide()
 
 func _library_pose() -> void:
+	if library_memory_slot >= 0:
+		_library_open()
+		return
 	var path := _selected_path()
 	if path.is_empty(): return
 	if thumb_world.is_empty(): thumb_world = _make_view(self, Vector2i(160,160))
