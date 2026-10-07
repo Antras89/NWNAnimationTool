@@ -23,6 +23,12 @@ func run() -> void:
 	var landmarks: Array = []
 	for point in points: landmarks.append({"x":-point.x,"y":-point.y,"z":point.z,"visibility":1.0})
 	var data = Mapper.compute(landmarks,rig,1.0,Vector3.ZERO)
+	var turn := Quaternion(Vector3.FORWARD, .17)
+	var source := Transform3D(Basis(Vector3.UP,.4).scaled(Vector3.ONE*1.2),Vector3(.1,.2,.3))
+	var preview := Mapper.landmark_positions(landmarks,1.3,Vector3.UP,turn,true,source,.5)
+	var transformed = Mapper.compute(landmarks,rig,1.3,Vector3.UP,turn,{},true,source)
+	check(preview[28].distance_to(transformed.ik_targets.right_leg.target + Vector3.UP*.5)<.0001,"Preview foot matches IK including tilt, scale, source transform and foot offset")
+	check(preview[24].distance_to(Mapper.landmark_positions(landmarks,1.3,Vector3.UP,turn,true,source)[24])<.0001,"Feet offset does not move pelvis overlay")
 	for name in data.fk_rotations: app.rig_controller.find_node(name).quaternion = data.fk_rotations[name]
 	var torso = app.rig_controller.find_node("torso_g")
 	var expected := (points[12]-points[11]).normalized()

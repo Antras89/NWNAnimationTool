@@ -1472,7 +1472,14 @@ func _on_source_xform_changed(kind: String) -> void:
 	match kind:
 		"image", "video":
 			if kind == _ai_wizard:
-				green_visualizer.transform = side_panel.get_source_xform(kind)
+				if kind == "video" and _video_previewed:
+					_preview_video_frame()
+				elif kind == "video":
+					if not _video_overlay_params.is_empty():
+						_video_overlay_params.user_xform = side_panel.get_source_xform(kind)
+					_sync_video_pose_overlay(side_panel.timeline.current_time)
+				else:
+					_show_ai_landmark_overlay(_ai_pending_landmarks)
 		"glb":
 			_apply_glb_source_xform()
 
@@ -1593,19 +1600,16 @@ func _show_ai_landmark_overlay(world_landmarks: Array) -> void:
 		_ai_origin = rig_hip_center
 		_ai_overlay_calibrated = true
 
-	# Convert landmarks to world positions
-	var positions: Array[Vector3] = []
-	for lm in world_landmarks:
-		var p := Vector3(-lm["x"], -lm["y"], lm["z"]) * _ai_scale_factor + _ai_origin
-		positions.append(p)
-
-	# Preview honesty: when "Ground to floor" is on, shift the overlay by the
-	# exact same amount the pose application will use, so what the user sees
-	# is what Apply pose produces.
-	if side_panel.is_ai_ground_enabled() and positions.size() >= 33:
-		var shift: float = AIPoseApplier.ground_shift(positions)
-		for i in range(positions.size()):
-			positions[i].y -= shift
+	green_visualizer.transform = Transform3D.IDENTITY
+	var positions: Array[Vector3]
+	if _ai_wizard == "video" and not _video_overlay_params.is_empty():
+		var p := _video_overlay_params
+		positions = AIPoseApplier.landmark_positions(world_landmarks, p.scale, p.origin,
+			p.pre_rotation, true, p.user_xform, p.foot_y)
+	else:
+		positions = AIPoseApplier.landmark_positions(world_landmarks, _ai_scale_factor, _ai_origin,
+			Quaternion.IDENTITY, _ai_wizard == "video" or side_panel.is_ai_ground_enabled(),
+			side_panel.get_source_xform(_ai_wizard))
 
 	# Build joint entries
 	var entries: Array = []
@@ -1877,6 +1881,7 @@ func _on_video_extract_pressed() -> void:
 func _on_video_extraction_done(frames: Array, duration: float) -> void:
 	_video_extracted_frames = frames
 	_video_extracted_duration = duration
+	_video_overlay_params = {}
 	_ai_overlay_calibrated = false
 	_ai_wizard = "video"
 	_video_previewed = false
@@ -2020,6 +2025,7 @@ func _nearest_video_landmarks(t: float) -> Array:
 # corrections against exactly what the preview put on screen.
 var _video_previewed: bool = false
 var _video_preview_params: Dictionary = {}
+var _video_overlay_params: Dictionary = {}
 var _video_preview_data: Dictionary = {}
 
 ## Applies the auto-computed pose of the frame nearest the timeline cursor
@@ -2034,9 +2040,11 @@ func _preview_video_frame() -> void:
 	rig_controller.deselect()
 	var p: Dictionary = await _compute_video_bake_params()
 	var data: Dictionary = _apply_video_frame(_nearest_video_landmarks(side_panel.timeline.current_time), p)
+	_video_overlay_params = p.duplicate(true)
 	_video_preview_params = p
 	_video_preview_data = data
 	_video_previewed = not data.is_empty()
+	_show_ai_landmark_overlay(_nearest_video_landmarks(side_panel.timeline.current_time))
 	side_panel.set_status("Preview at %.2fs — adjust components by hand, then Bake." % side_panel.timeline.current_time)
 
 ## Measures the user's manual corrections on top of the previewed pose —
@@ -2095,6 +2103,7 @@ func _on_video_apply_to_timeline() -> void:
 	else:
 		p = await _compute_video_bake_params()
 
+	_video_overlay_params = p.duplicate(true)
 	# Deselect BEFORE the bake loop: _process copies the ACTIVE limb's pin
 	# from the node every frame, which would override the per-frame pose we
 	# set and silently discard the user's captured corrections.

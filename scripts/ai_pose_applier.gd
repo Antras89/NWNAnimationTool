@@ -51,37 +51,9 @@ static func compute(world_landmarks: Array, rig_root: Node3D, scale_factor: floa
 	if world_landmarks.size() < 33:
 		return {}
 
-	# Convert all 33 landmarks to world-space Vector3 using the same
-	# coordinate transform as the overlay (180° Y: negate X, keep Z).
-	# pre_rotation levels out MediaPipe's estimated-world tilt (computed
-	# once from the first frame via compute_ground_alignment).
-	var pre_basis := Basis(pre_rotation)
-	var pts: Array[Vector3] = []
-	for lm in world_landmarks:
-		var p := pre_basis * Vector3(-lm["x"], -lm["y"], lm["z"]) * scale_factor + origin
-		pts.append(p)
-
+	var pts := landmark_positions(world_landmarks, scale_factor, origin, pre_rotation, ground, user_xform)
 	var vis: Array = []
-	for lm in world_landmarks:
-		vis.append(lm.get("visibility", 1.0))
-
-	# Ground the entire skeleton (optional): shift all pts down so the
-	# lowest foot CONTACT point (heel or toe — not the ankle, which sits
-	# above the sole) rests at Y=0. Done here before anything else so every
-	# derived point (IK targets, midpoints, FK bases) inherits the
-	# correction. When ground is false the pose lands exactly where the
-	# markers are, even if that leaves it floating or sunken.
-	if ground:
-		var min_foot_y: float = ground_shift(pts)
-		for i in range(pts.size()):
-			pts[i].y -= min_foot_y
-
-	# User-authored SOURCE TRANSFORM (rotate/offset from the wizard panel),
-	# applied last so it matches the preview exactly: the green visualizer
-	# shows T * p with the same T on its node transform.
-	if user_xform != Transform3D.IDENTITY:
-		for i in range(pts.size()):
-			pts[i] = user_xform * pts[i]
+	for lm in world_landmarks: vis.append(lm.get("visibility", 1.0))
 
 	var result := {
 		"ik_targets": {},
@@ -416,3 +388,19 @@ static func estimate_scale(landmarks: Array, rig: Node3D) -> float:
 	ratios.sort()
 	var mid := ratios.size() / 2
 	return (ratios[mid-1] + ratios[mid]) * .5 if ratios.size() % 2 == 0 else ratios[mid]
+
+## Shared coordinates for the detected skeleton and the IK input.
+static func landmark_positions(landmarks: Array, scale_factor: float, origin: Vector3,
+		pre_rotation: Quaternion = Quaternion.IDENTITY, ground: bool = true,
+		user_xform: Transform3D = Transform3D.IDENTITY, foot_y: float = 0.0) -> Array[Vector3]:
+	var points: Array[Vector3] = []
+	for lm in landmarks:
+		points.append(Basis(pre_rotation) * Vector3(-lm.x, -lm.y, lm.z) * scale_factor + origin)
+	if points.size() < 33: return points
+	var shift := ground_shift(points) if ground else 0.0
+	for i in points.size():
+		points[i].y -= shift
+		points[i] = user_xform * points[i]
+	# Feet offset is applied in world space by the IK pipeline as well.
+	for i in [27,28,29,30,31,32]: points[i].y += foot_y
+	return points
