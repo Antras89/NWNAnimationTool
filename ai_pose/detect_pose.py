@@ -16,10 +16,10 @@ import os
 import json
 import urllib.request
 
-MODEL_PATH = os.environ.get("NWN_POSE_MODEL", os.path.join(os.path.dirname(os.path.abspath(__file__)), "pose_landmarker.task"))
+MODEL_PATH = os.environ.get("NWN_POSE_MODEL", os.path.join(os.path.dirname(os.path.abspath(__file__)), "pose_landmarker_full.task"))
 MODEL_URL = (
     "https://storage.googleapis.com/mediapipe-models/"
-    "pose_landmarker/pose_landmarker_lite/float16/latest/pose_landmarker_lite.task"
+    "pose_landmarker/pose_landmarker_full/float16/1/pose_landmarker_full.task"
 )
 
 LANDMARK_NAMES = [

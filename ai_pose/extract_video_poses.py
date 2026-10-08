@@ -36,10 +36,10 @@ def run(video_path: str, sample_fps: float = 10.0, smooth_window: int = 3) -> di
     except ImportError:
         return {"error": "mediapipe not installed. Run: pip install mediapipe opencv-python"}
 
-    model_path = os.environ.get("NWN_POSE_MODEL", os.path.join(os.path.dirname(__file__), "pose_landmarker.task"))
+    model_path = os.environ.get("NWN_POSE_MODEL", os.path.join(os.path.dirname(__file__), "pose_landmarker_full.task"))
     if not os.path.exists(model_path):
         import urllib.request
-        url = "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/latest/pose_landmarker_lite.task"
+        url = "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_full/float16/1/pose_landmarker_full.task"
         urllib.request.urlretrieve(url, model_path)
 
     cap = cv2.VideoCapture(video_path)
