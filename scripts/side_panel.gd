@@ -204,6 +204,13 @@ func _ready() -> void:
 	image_pose_panel.get_node("Scroll/Body").add_child(side_pose)
 	image_pose_panel.get_node("Scroll/Body").move_child(side_pose, ai_ground_check.get_index()+1)
 	side_pose.toggled.connect(func(_v): source_xform_changed.emit("image"))
+	var grip := CheckBox.new()
+	grip.name = "ImageTwoHandGrip"
+	grip.text = "Two-handed grip"
+	grip.tooltip_text = "Place the left hand on the right-hand weapon grip when applying an image pose"
+	image_pose_panel.get_node("Scroll/Body").add_child(grip)
+	image_pose_panel.get_node("Scroll/Body").move_child(grip,side_pose.get_index()+1)
+
 
 
 	# SOURCE TRANSFORM spins: same node names in every wizard, one wiring loop.

@@ -427,3 +427,15 @@ static func side_image_landmarks(landmarks: Array) -> Array:
 		result[i].x = (landmarks[i].image_x-hip.x)*scale + hip3.x
 		result[i].y = (landmarks[i].image_y-hip.y)*scale + hip3.y
 	return result
+
+static func image_hand_bases(data: Dictionary) -> Dictionary:
+	var result := {}
+	for name in ["rhand_g", "lhand_g"]:
+		if not data.end_world_bases.has(name): continue
+		# NWN hand: -Y along fingers; weapon attachment points along -Z.
+		# MediaPipe convention mirrors the across-knuckle axis on the left.
+		var across := Vector3.FORWARD if name == "rhand_g" else Vector3.BACK
+		var fingers := Vector3.DOWN
+		var convention := Basis(across, fingers.cross(across), fingers)
+		result[name] = data.end_world_bases[name] * convention.inverse()
+	return result

@@ -1690,10 +1690,10 @@ func _on_ai_apply_pose() -> void:
 			_limb_targets[comp_id]["target"] = ik_targets[comp_id]["target"]
 			_limb_targets[comp_id]["pole"]   = ik_targets[comp_id]["pole"]
 
-	# NOTE: end_world_bases is intentionally NOT applied here — without the
-	# first-frame calibration the raw MediaPipe convention basis would spin
-	# hands/feet arbitrarily. Single-image poses keep the rest orientation;
-	# only the video flow (which calibrates on frame 1) pins hand/foot bases.
+	# Apply actual image hand orientation through the same pins used by IK.
+	var hand_bases := AIPoseApplier.image_hand_bases(data)
+	for name in hand_bases:
+		_limb_targets[END_BONE_COMPONENT[name]].end_basis = hand_bases[name]
 
 	# Apply FK rotations (pelvis, torso, head) directly onto the bone nodes
 	var fk_rotations: Dictionary = data.get("fk_rotations", {})
@@ -1709,6 +1709,9 @@ func _on_ai_apply_pose() -> void:
 		if rootdummy != null:
 			rootdummy.global_position = root_pos
 
+	if side_panel.image_pose_panel.get_node("Scroll/Body/ImageTwoHandGrip").button_pressed:
+		_apply_image_two_hand_grip(hand_bases)
+
 	var sel: String = rig_controller.selected_component
 	if sel != "":
 		_on_component_selected(sel)
@@ -1719,6 +1722,35 @@ func _on_ai_apply_pose() -> void:
 	var n_ik := ik_targets.size()
 	var n_fk := fk_rotations.size()
 	side_panel.set_ai_server_status("Applied: %d/4 limbs. %s" % [n_ik, "Side pose: verify hidden joints." if side_pose else "Enable Side pose if an occluded limb was skipped."])
+
+
+func _apply_image_two_hand_grip(bases: Dictionary) -> void:
+	if not bases.has("rhand_g") or not bases.has("lhand_g"): return
+	var right: Node3D = rig_controller.find_node("rhand_g")
+	var left: Node3D = rig_controller.find_node("lhand_g")
+	var rattach: Node3D = rig_controller.find_node("rhand")
+	var lattach: Node3D = rig_controller.find_node("lhand")
+	if right == null or left == null or rattach == null or lattach == null: return
+	var right_local: Transform3D = right.global_transform.affine_inverse() * rattach.global_transform
+	var left_local: Transform3D = left.global_transform.affine_inverse() * lattach.global_transform
+	var rb: Basis = bases.rhand_g
+	var lb: Basis = bases.lhand_g
+	var blade := (rb * right_local.basis * Vector3.FORWARD).normalized()
+	var left_blade := (lb * left_local.basis * Vector3.FORWARD).normalized()
+	lb = Basis(Quaternion(left_blade,blade)) * lb
+	var grip: Vector3 = _limb_targets.right_arm.target + rb * right_local.origin
+	# Keep the shared grip reachable by both arms, without changing bone lengths.
+	var offsets := {"right_arm": -(rb * right_local.origin), "left_arm": -blade * .11 - lb * left_local.origin}
+	for iteration in 12:
+		for id in ["right_arm", "left_arm"]:
+			var chain: Array = rig_controller.get_chain_nodes(id)
+			var reach: float = (chain[0].global_position.distance_to(chain[1].global_position) + chain[1].global_position.distance_to(chain[2].global_position)) * .97
+			var delta: Vector3 = grip + offsets[id] - chain[0].global_position
+			if delta.length() > reach: grip -= delta.normalized() * (delta.length()-reach)
+	_limb_targets.right_arm.target = grip + offsets.right_arm
+	_limb_targets.left_arm.target = grip + offsets.left_arm
+	_limb_targets.left_arm.end_basis = lb
+
 
 # Maps the AI applier's end-bone names onto the IK component whose end_basis
 # pin controls that bone's world orientation.
