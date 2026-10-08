@@ -136,6 +136,7 @@ func _ready() -> void:
 	add_child(_ai_client)
 	_ai_client.pose_received.connect(_on_ai_pose_received)
 	_ai_client.pose_failed.connect(_on_ai_pose_failed)
+	_ai_client.pose_notice.connect(side_panel.set_ai_server_status)
 	side_panel.ai_pose_image_selected.connect(_on_ai_image_selected)
 	side_panel.ai_pose_apply_requested.connect(_on_ai_apply_pose)
 	side_panel.ai_ground_toggled.connect(func(_v: bool):

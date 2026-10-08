@@ -476,6 +476,17 @@ func _on_ai_image_selected(path: String) -> void:
 
 func set_ai_server_status(text: String) -> void:
 	status_label.text = text
+	var body := image_pose_panel.get_node("Scroll/Body")
+	var message := body.get_node_or_null("DetectionStatus") as Label
+	if message == null:
+		message = Label.new()
+		message.name = "DetectionStatus"
+		message.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		message.custom_minimum_size.x = 160
+		body.add_child(message)
+		body.move_child(message, ai_apply_pose_button.get_index())
+	message.text = text
+
 
 func set_ai_apply_enabled(enabled: bool) -> void:
 	ai_apply_pose_button.disabled = not enabled

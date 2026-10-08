@@ -5,6 +5,7 @@ extends Node
 
 signal pose_received(world_landmarks: Array)
 signal pose_failed(error: String)
+signal pose_notice(message: String)
 
 const SCRIPT_PATH := "res://ai_pose/detect_pose.py"
 
@@ -114,4 +115,6 @@ func _on_thread_done() -> void:
 			pose_failed.emit("No pose detected in image")
 		else:
 			pose_received.emit(wl)
+			if not str(_result.get("warning", "")).is_empty():
+				pose_notice.emit(str(_result.warning))
 	_result = {}

@@ -48,22 +48,13 @@ def download_model():
 
 
 def decode_image(path: str):
-    try:
-        import cv2
-        import numpy as np
-        img_bgr = cv2.imdecode(np.fromfile(path, dtype=np.uint8), cv2.IMREAD_COLOR)
-        if img_bgr is None:
-            raise RuntimeError("cv2.imread returned None")
-        return cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB)
-    except ImportError:
-        pass
-    try:
-        from PIL import Image
-        import numpy as np
-        return np.array(Image.open(path).convert("RGB"))
-    except ImportError:
-        pass
-    raise RuntimeError("No image decoder found. Run: pip install opencv-python")
+    from PIL import Image, ImageOps
+    import numpy as np
+    with Image.open(path) as source:
+        image = ImageOps.exif_transpose(source).convert("RGBA")
+        background = Image.new("RGBA", image.size, "white")
+        background.alpha_composite(image)
+        return np.array(background.convert("RGB"))
 
 
 def run(image_path: str) -> dict:
@@ -88,8 +79,21 @@ def run(image_path: str) -> dict:
     with PoseLandmarker.create_from_options(options) as detector:
         result = detector.detect(mp_image)
 
+    fallback = False
     if not result.pose_world_landmarks:
-        return {"error": "No pose detected in image"}
+        # Drawn silhouettes can score below the photographic detector threshold.
+        options = PoseLandmarkerOptions(
+            base_options=BaseOptions(model_asset_path=MODEL_PATH),
+            running_mode=VisionRunningMode.IMAGE,
+            min_pose_detection_confidence=0.15,
+            min_pose_presence_confidence=0.15,
+            output_segmentation_masks=False,
+        )
+        with PoseLandmarker.create_from_options(options) as detector:
+            result = detector.detect(mp_image)
+        fallback = True
+    if not result.pose_world_landmarks:
+        return {"error": "No person detected. Try a clearer full-body image; drawings may need manual posing."}
 
     lm3d = []
     for i, lm in enumerate(result.pose_world_landmarks[0]):
@@ -101,7 +105,7 @@ def run(image_path: str) -> dict:
             "visibility": lm.visibility,
         })
 
-    return {"world_landmarks": lm3d}
+    return {"world_landmarks": lm3d, "warning": "Illustration fallback: check the green skeleton before Apply Pose." if fallback else ""}
 
 
 if __name__ == "__main__":
