@@ -1193,7 +1193,7 @@ size = Vector2i(700, 450)
 ok_button_text = "Load"
 file_mode = 0
 access = 2
-filters = PackedStringArray("*.mp4,*.mov,*.avi,*.mkv,*.webm ; Video Files")
+filters = PackedStringArray("*.mp4,*.mov,*.avi,*.mkv,*.webm,*.gif ; Video and animated GIF")
 theme = ExtResource("9")
 
 [node name="ImagePosePanel" type="Panel" parent="SidePanel" unique_id=1777000001]

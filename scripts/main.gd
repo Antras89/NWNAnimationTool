@@ -143,6 +143,7 @@ func _ready() -> void:
 			_show_ai_landmark_overlay(_ai_pending_landmarks))
 	side_panel.source_xform_changed.connect(_on_source_xform_changed)
 	side_panel.ai_bulk_requested.connect(_on_ai_bulk_requested)
+	side_panel.timeline.delete_selected_requested.connect(_on_remove_key_requested)
 	side_panel.pose_memory_save_requested.connect(_on_pose_memory_save)
 	side_panel.pose_memory_load_requested.connect(_on_pose_memory_load)
 	side_panel.pose_memory_open_requested.connect(_on_pose_memory_open)
@@ -810,6 +811,16 @@ func _upsert_keyframe(t: float, transforms: Dictionary) -> void:
 ## this there was no way to get rid of a bad keyframe short of starting the
 ## whole animation over.
 func _on_remove_key_requested() -> void:
+	var selected: Array = side_panel.timeline.selected_times.duplicate()
+	if not selected.is_empty():
+		_push_undo_snapshot()
+		_on_play_toggled(false)
+		_keyframes = _keyframes.filter(func(key): return not selected.has(key.time))
+		side_panel.timeline.clear_selection()
+		_refresh_timeline_markers()
+		_apply_pose_at_time(side_panel.timeline.current_time)
+		side_panel.set_status("Removed %d selected keyframes. Undo restores them." % selected.size())
+		return
 	var t: float = side_panel.timeline.current_time
 	for i in range(_keyframes.size()):
 		if abs(_keyframes[i]["time"] - t) < 0.005:
@@ -1156,6 +1167,7 @@ func _on_open_file_requested(path: String, memory_slot: int = -1) -> void:
 		side_panel.set_status("Error: could not parse file (no 'newanim' found).")
 		return
 
+	side_panel.timeline.clear_selection()
 	_keyframes = result["keyframes"]
 	_anim_length = result["length"]
 	side_panel.set_anim_name(result["anim_name"])
@@ -1434,6 +1446,7 @@ func _on_retarget_bake_requested() -> void:
 		return
 
 	_push_undo_snapshot()
+	side_panel.timeline.clear_selection()
 	_keyframes = result["keyframes"]
 	_anim_length = result["length"]
 	side_panel.set_anim_name(result["anim_name"])
@@ -1838,6 +1851,29 @@ func _setup_video_pose_panel() -> void:
 	_video_client.extraction_failed.connect(_on_video_extraction_failed)
 
 	var panel := _video_panel
+	var body := panel.get_node("Scroll/Body")
+	var simplify := CheckBox.new()
+	simplify.name = "SimplifyPoses"
+	simplify.text = "Keep key poses only"
+	simplify.button_pressed = true
+	simplify.tooltip_text = "Bake fewer keys by keeping the largest changes in movement"
+	body.add_child(simplify)
+	body.move_child(simplify,body.get_node("ExtractButton").get_index())
+	var row := HBoxContainer.new()
+	row.name = "KeyPoseRow"
+	body.add_child(row)
+	body.move_child(row,simplify.get_index()+1)
+	var label := Label.new()
+	label.text = "Max key poses"
+	row.add_child(label)
+	var count := SpinBox.new()
+	count.name = "Count"
+	count.min_value = 2
+	count.max_value = 500
+	count.value = 12
+	row.add_child(count)
+	simplify.toggled.connect(func(enabled): count.editable = enabled)
+
 	panel.get_node("TitleRow/CloseButton").pressed.connect(func(): panel.visible = false)
 
 	var load_btn: Button = panel.get_node("Scroll/Body/VideoRow/LoadVideoButton")
@@ -2117,13 +2153,21 @@ func _on_video_apply_to_timeline() -> void:
 	_anim_length = _video_extracted_duration
 	side_panel.set_duration(_anim_length)
 
+	_on_play_toggled(false)
+	var baked_keys: Array = []
 	# Apply each frame as a keyframe
 	for frame_data in _video_extracted_frames:
 		_apply_video_frame(frame_data["world_landmarks"], p, extras)
 		# Let the IK solver run for one frame before capturing
 		await get_tree().process_frame
 		var snapshot := MdlExporter.capture_pose($Rig)
-		_upsert_keyframe(frame_data["time"], snapshot)
+		baked_keys.append({"time": frame_data["time"], "transforms": snapshot})
+
+	if _video_panel.get_node("Scroll/Body/SimplifyPoses").button_pressed:
+		baked_keys = preload("res://scripts/pose_reducer.gd").reduce_keys(baked_keys, int(_video_panel.get_node("Scroll/Body/KeyPoseRow/Count").value))
+	side_panel.timeline.clear_selection()
+	_keyframes = baked_keys
+	_refresh_timeline_markers()
 
 	_video_previewed = false
 	_video_preview_params = {}
@@ -2134,9 +2178,9 @@ func _on_video_apply_to_timeline() -> void:
 	# how the user dismisses the whole debug context.
 	var n_fix: int = extras["end"].size() + extras["fk"].size() + extras["target"].size()
 	if n_fix > 0:
-		side_panel.set_status("Baked %d keyframes with %d manual corrections (%.1fs)." % [_video_extracted_frames.size(), n_fix, _video_extracted_duration])
+		side_panel.set_status("Baked %d keyframes with %d manual corrections (%.1fs)." % [_keyframes.size(), n_fix, _video_extracted_duration])
 	else:
-		side_panel.set_status("Baked %d keyframes from video (%.1fs)." % [_video_extracted_frames.size(), _video_extracted_duration])
+		side_panel.set_status("Baked %d keyframes from video (%.1fs)." % [_keyframes.size(), _video_extracted_duration])
 	green_visualizer.visible = true
 	_sync_video_pose_overlay(0.0)
 
