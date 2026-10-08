@@ -197,6 +197,14 @@ func _ready() -> void:
 	ai_image_dialog.file_selected.connect(_on_ai_image_selected)
 	ai_apply_pose_button.pressed.connect(func(): ai_pose_apply_requested.emit())
 	ai_ground_check.toggled.connect(func(v): ai_ground_toggled.emit(v))
+	var side_pose := CheckBox.new()
+	side_pose.name = "SidePose"
+	side_pose.text = "Side pose / image outline"
+	side_pose.tooltip_text = "Match joint positions to the image outline and include partly hidden limbs. Depth remains estimated. Side camera only changes the view."
+	image_pose_panel.get_node("Scroll/Body").add_child(side_pose)
+	image_pose_panel.get_node("Scroll/Body").move_child(side_pose, ai_ground_check.get_index()+1)
+	side_pose.toggled.connect(func(_v): source_xform_changed.emit("image"))
+
 
 	# SOURCE TRANSFORM spins: same node names in every wizard, one wiring loop.
 	for kind in ["image", "video", "glb"]:

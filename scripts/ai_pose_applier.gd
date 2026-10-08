@@ -47,7 +47,7 @@ const MP_RIGHT_FOOT_INDEX := 32
 #   root_position: Vector3 (world) or null
 # ---------------------------------------------------------------------------
 
-static func compute(world_landmarks: Array, rig_root: Node3D, scale_factor: float, origin: Vector3, pre_rotation: Quaternion = Quaternion.IDENTITY, calibration: Dictionary = {}, ground: bool = true, user_xform: Transform3D = Transform3D.IDENTITY) -> Dictionary:
+static func compute(world_landmarks: Array, rig_root: Node3D, scale_factor: float, origin: Vector3, pre_rotation: Quaternion = Quaternion.IDENTITY, calibration: Dictionary = {}, ground: bool = true, user_xform: Transform3D = Transform3D.IDENTITY, limb_visibility: float = 0.4) -> Dictionary:
 	if world_landmarks.size() < 33:
 		return {}
 
@@ -72,25 +72,25 @@ static func compute(world_landmarks: Array, rig_root: Node3D, scale_factor: floa
 	# the distance — pole = 2*mid_joint - midpoint(root, tip).
 	# This guarantees the pole is always on the correct side and at a
 	# safe distance regardless of how extreme the pose is.
-	if vis[MP_RIGHT_SHOULDER] >= 0.4 and vis[MP_RIGHT_WRIST] >= 0.4 and vis[MP_RIGHT_ELBOW] >= 0.4:
+	if vis[MP_RIGHT_SHOULDER] >= limb_visibility and vis[MP_RIGHT_WRIST] >= limb_visibility and vis[MP_RIGHT_ELBOW] >= limb_visibility:
 		var mid := (pts[MP_RIGHT_SHOULDER] + pts[MP_RIGHT_WRIST]) * 0.5
 		result["ik_targets"]["right_arm"] = {
 			"target": pts[MP_RIGHT_WRIST],
 			"pole":   pts[MP_RIGHT_ELBOW] * 2.0 - mid,
 		}
-	if vis[MP_LEFT_SHOULDER] >= 0.4 and vis[MP_LEFT_WRIST] >= 0.4 and vis[MP_LEFT_ELBOW] >= 0.4:
+	if vis[MP_LEFT_SHOULDER] >= limb_visibility and vis[MP_LEFT_WRIST] >= limb_visibility and vis[MP_LEFT_ELBOW] >= limb_visibility:
 		var mid := (pts[MP_LEFT_SHOULDER] + pts[MP_LEFT_WRIST]) * 0.5
 		result["ik_targets"]["left_arm"] = {
 			"target": pts[MP_LEFT_WRIST],
 			"pole":   pts[MP_LEFT_ELBOW] * 2.0 - mid,
 		}
-	if vis[MP_RIGHT_HIP] >= 0.4 and vis[MP_RIGHT_ANKLE] >= 0.4 and vis[MP_RIGHT_KNEE] >= 0.4:
+	if vis[MP_RIGHT_HIP] >= limb_visibility and vis[MP_RIGHT_ANKLE] >= limb_visibility and vis[MP_RIGHT_KNEE] >= limb_visibility:
 		var mid := (pts[MP_RIGHT_HIP] + pts[MP_RIGHT_ANKLE]) * 0.5
 		result["ik_targets"]["right_leg"] = {
 			"target": pts[MP_RIGHT_ANKLE],
 			"pole":   pts[MP_RIGHT_KNEE] * 2.0 - mid,
 		}
-	if vis[MP_LEFT_HIP] >= 0.4 and vis[MP_LEFT_ANKLE] >= 0.4 and vis[MP_LEFT_KNEE] >= 0.4:
+	if vis[MP_LEFT_HIP] >= limb_visibility and vis[MP_LEFT_ANKLE] >= limb_visibility and vis[MP_LEFT_KNEE] >= limb_visibility:
 		var mid := (pts[MP_LEFT_HIP] + pts[MP_LEFT_ANKLE]) * 0.5
 		result["ik_targets"]["left_leg"] = {
 			"target": pts[MP_LEFT_ANKLE],
@@ -404,3 +404,26 @@ static func landmark_positions(landmarks: Array, scale_factor: float, origin: Ve
 	# Feet offset is applied in world space by the IK pipeline as well.
 	for i in [27,28,29,30,31,32]: points[i].y += foot_y
 	return points
+
+## Keep the silhouette measured in the image; retain estimated depth for
+## overlapping near/far limbs. Image X is aspect-corrected by the detector.
+static func side_image_landmarks(landmarks: Array) -> Array:
+	if landmarks.size() < 33 or not landmarks[0].has("image_x"): return landmarks
+	var result := landmarks.duplicate(true)
+	var hip := Vector2.ZERO
+	var shoulder := Vector2.ZERO
+	var hip3 := Vector3.ZERO
+	var shoulder3 := Vector3.ZERO
+	for i in [23,24]:
+		hip += Vector2(landmarks[i].image_x,landmarks[i].image_y)*.5
+		hip3 += Vector3(landmarks[i].x,landmarks[i].y,landmarks[i].z)*.5
+	for i in [11,12]:
+		shoulder += Vector2(landmarks[i].image_x,landmarks[i].image_y)*.5
+		shoulder3 += Vector3(landmarks[i].x,landmarks[i].y,landmarks[i].z)*.5
+	var span := shoulder.distance_to(hip)
+	if span < .02: return landmarks
+	var scale := shoulder3.distance_to(hip3)/span
+	for i in result.size():
+		result[i].x = (landmarks[i].image_x-hip.x)*scale + hip3.x
+		result[i].y = (landmarks[i].image_y-hip.y)*scale + hip3.y
+	return result

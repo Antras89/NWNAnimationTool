@@ -1585,6 +1585,8 @@ const MP_CONNECTIONS := [
 ]
 
 func _show_ai_landmark_overlay(world_landmarks: Array) -> void:
+	if _ai_wizard == "image" and side_panel.image_pose_panel.get_node("Scroll/Body/SidePose").button_pressed:
+		world_landmarks = AIPoseApplier.side_image_landmarks(world_landmarks)
 	green_visualizer.clear()
 
 	if world_landmarks.is_empty():
@@ -1669,10 +1671,14 @@ func _on_ai_apply_pose() -> void:
 		side_panel.set_status("No pose detected yet — load an image first.")
 		return
 	_push_undo_snapshot()
+	_on_play_toggled(false)
+	if qol != null: qol.release_constraints()
 	rig_controller.deselect()
 
-	var data := AIPoseApplier.compute(_ai_pending_landmarks, $Rig, _ai_scale_factor, _ai_origin,
-		Quaternion.IDENTITY, {}, side_panel.is_ai_ground_enabled(), side_panel.get_source_xform("image"))
+	var side_pose: bool = side_panel.image_pose_panel.get_node("Scroll/Body/SidePose").button_pressed
+	var image_landmarks := AIPoseApplier.side_image_landmarks(_ai_pending_landmarks) if side_pose else _ai_pending_landmarks
+	var data := AIPoseApplier.compute(image_landmarks, $Rig, _ai_scale_factor, _ai_origin,
+		Quaternion.IDENTITY, {}, side_panel.is_ai_ground_enabled(), side_panel.get_source_xform("image"), 0.25 if side_pose else 0.4)
 	if data.is_empty():
 		side_panel.set_status("Could not compute pose from landmarks.")
 		return
@@ -1712,7 +1718,7 @@ func _on_ai_apply_pose() -> void:
 	# reference to compare the applied pose against the detected landmarks.
 	var n_ik := ik_targets.size()
 	var n_fk := fk_rotations.size()
-	side_panel.set_status("AI pose applied (%d IK targets, %d FK bones)." % [n_ik, n_fk])
+	side_panel.set_ai_server_status("Applied: %d/4 limbs. %s" % [n_ik, "Side pose: verify hidden joints." if side_pose else "Enable Side pose if an occluded limb was skipped."])
 
 # Maps the AI applier's end-bone names onto the IK component whose end_basis
 # pin controls that bone's world orientation.

@@ -103,6 +103,8 @@ def run(image_path: str) -> dict:
             "y": lm.y,
             "z": lm.z,
             "visibility": lm.visibility,
+            "image_x": result.pose_landmarks[0][i].x * rgb.shape[1] / rgb.shape[0],
+            "image_y": result.pose_landmarks[0][i].y,
         })
 
     return {"world_landmarks": lm3d, "warning": "Illustration fallback: check the green skeleton before Apply Pose." if fallback else ""}

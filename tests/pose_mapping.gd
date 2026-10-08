@@ -23,6 +23,17 @@ func run() -> void:
 	var landmarks: Array = []
 	for point in points: landmarks.append({"x":-point.x,"y":-point.y,"z":point.z,"visibility":1.0})
 	var data = Mapper.compute(landmarks,rig,1.0,Vector3.ZERO)
+	var image_points := landmarks.duplicate(true)
+	for i in image_points.size():
+		image_points[i].image_x = float(i % 5) / 10.0
+		image_points[i].image_y = float(i) / 40.0
+	image_points[13].visibility = .3
+	var side = Mapper.side_image_landmarks(image_points)
+	var factor: float = (side[15].x-side[11].x)/(image_points[15].image_x-image_points[11].image_x)
+	check(abs((side[15].y-side[11].y)-(image_points[15].image_y-image_points[11].image_y)*factor)<.0001,"Side mode retains image proportions in X and Y")
+	check(side[15].z==image_points[15].z,"Side mode keeps estimated depth")
+	check(Mapper.compute(side,rig,1.0,Vector3.ZERO,Quaternion.IDENTITY,{},true,Transform3D.IDENTITY,.25).ik_targets.has("left_arm"),"Side mode includes partially hidden elbow")
+	check(not Mapper.compute(side,rig,1.0,Vector3.ZERO).ik_targets.has("left_arm"),"Default confidence stays conservative")
 	var turn := Quaternion(Vector3.FORWARD, .17)
 	var source := Transform3D(Basis(Vector3.UP,.4).scaled(Vector3.ONE*1.2),Vector3(.1,.2,.3))
 	var preview := Mapper.landmark_positions(landmarks,1.3,Vector3.UP,turn,true,source,.5)
