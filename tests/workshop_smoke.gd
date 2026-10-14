@@ -49,8 +49,8 @@ func run() -> void:
 	check(app._pose_memory_clips[4].keyframes.size() == 3, "Open stores complete animation")
 	app._keyframes.clear()
 	app._on_pose_memory_load(4)
-	check(app._keyframes.size() == 3 and app._anim_length == 1, "Load restores full animation and duration")
-	app._keyframes[0].time = .1
+	check(app._keyframes.is_empty(), "Load pose does not replace timeline")
+	app._pose_memory[4]["rootdummy"].origin.x += .1
 	check(app._pose_memory_clips[4].keyframes[0].time == 0, "Saved animation is independent of editing")
 	app._on_open_file_requested("user://missing-memory-clip.txt", 4)
 	check(app._pose_memory_clips[4].keyframes.size() == 3, "Failed open preserves slot")

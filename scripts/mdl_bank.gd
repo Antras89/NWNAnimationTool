@@ -252,3 +252,30 @@ func import_references() -> void:
 func _apply_preview_rig(rig: String) -> void:
 	if rig == "female": app._on_gender_selected("res://assets/nwn/a_fa.glb")
 	elif rig == "male": app._on_gender_selected("res://assets/nwn/a_ba.glb")
+
+# Memory imports use their own backend session and do not touch the editing bank.
+func open_memory_bank(path: String, slot: int) -> void:
+	if busy:
+		app.side_panel.set_status("MDL bank is busy. Try again when it finishes.")
+		return
+	var memory_session := OS.get_user_data_dir().path_join("mdl-sessions/memory_" + str(Time.get_ticks_usec()))
+	DirAccess.make_dir_recursive_absolute(memory_session.get_base_dir())
+	_request({"action":"open", "source":path, "session":memory_session}, func(result):
+		var picker := ConfirmationDialog.new()
+		picker.title = "Pose Memory %d — choose animation" % (slot+1)
+		var choices := ItemList.new()
+		choices.custom_minimum_size = Vector2(500,320)
+		picker.add_child(choices)
+		app.add_child(picker)
+		for clip in result.clips: choices.add_item(clip.name)
+		if choices.item_count > 0: choices.select(0)
+		var accept := func():
+			if choices.get_selected_items().is_empty() or busy: return
+			var clip_name := choices.get_item_text(choices.get_selected_items()[0])
+			_request({"action":"preview","session":memory_session,"animation":clip_name},func(preview):
+				app._import_pose_memory(preview.preview,slot))
+			picker.queue_free()
+		picker.confirmed.connect(accept)
+		choices.item_activated.connect(func(_index): accept.call())
+		picker.canceled.connect(picker.queue_free)
+		picker.popup_centered())

@@ -624,6 +624,9 @@ func _pose_files(path: String, recursive: bool, depth: int = 0) -> PackedStringA
 	return files
 
 func _library_preview() -> void:
+	if library_memory_slot >= 0:
+		_library_open()
+		return
 	var path := _selected_path()
 	if path.is_empty(): return
 	if not app.mdl_bank.recognizes(path) and MdlImporter.parse(FileAccess.get_file_as_string(path),app.get_node("Rig")) == null:

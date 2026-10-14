@@ -1142,6 +1142,12 @@ func _rotate_selection(value: Basis) -> void:
 	_resync_limb_targets_from_current_pose()
 
 func _on_open_file_requested(path: String, memory_slot: int = -1) -> void:
+	if memory_slot >= 0:
+		if mdl_bank != null and mdl_bank.recognizes(path):
+			mdl_bank.open_memory_bank(path, memory_slot)
+		else:
+			_import_pose_memory(path, memory_slot)
+		return
 	if mdl_bank == null or not mdl_bank.loading_clip:
 		_pose_memory_pending_slot = memory_slot
 	if mdl_bank != null and not mdl_bank.loading_clip:
@@ -1515,6 +1521,25 @@ var _pose_memory_pending_slot: int = -1
 func _on_pose_memory_open(slot: int) -> void:
 	qol.open_library(slot)
 
+func _import_pose_memory(path: String, slot: int) -> void:
+	var file := FileAccess.open(path, FileAccess.READ)
+	if file == null:
+		side_panel.set_status("Could not open animation for pose memory.")
+		return
+	# Parse against a separate rest rig, never reset the live scene.
+	var reference: Node3D = load(_current_model_path).instantiate()
+	var result = MdlImporter.parse(file.get_as_text(), reference)
+	reference.free()
+	if result == null or result.keyframes.is_empty():
+		side_panel.set_status("No valid animation found; pose memory unchanged.")
+		return
+	_pose_memory[slot] = result.keyframes[0].transforms.duplicate(true)
+	_pose_memory_names[slot] = result.anim_name
+	_pose_memory_clips[slot] = {"keyframes": result.keyframes.duplicate(true), "length": result.length}
+	side_panel.set_pose_memory_slot_name(slot, result.anim_name)
+	side_panel.set_pose_memory_slot_filled(slot, true)
+	side_panel.set_status("Stored %s in slot %d. Main animation unchanged." % [result.anim_name,slot+1])
+
 func _on_pose_memory_save(slot: int) -> void:
 	_pose_memory_clips[slot] = null
 	_pose_memory[slot] = MdlExporter.capture_pose($Rig)
@@ -1528,22 +1553,11 @@ func _on_pose_memory_load(slot: int) -> void:
 		return
 	var snap: Dictionary = _pose_memory[slot]
 	_push_undo_snapshot()
-	if _pose_memory_clips[slot] != null:
-		_on_play_toggled(false)
-		rig_controller.deselect()
-		if qol != null: qol.release_constraints()
-		if mdl_bank != null: mdl_bank.active_clip = ""
-		_keyframes = _pose_memory_clips[slot].keyframes.duplicate(true)
-		_anim_length = _pose_memory_clips[slot].length
-		side_panel.set_anim_name(_pose_memory_names[slot])
-		side_panel.set_duration(_anim_length)
-		_refresh_timeline_markers()
-		side_panel.timeline.set_current_time(0.0)
-		_apply_pose_at_time(0.0)
-		side_panel.set_status("Animation loaded from slot %d." % (slot + 1))
-		return
+	_on_play_toggled(false)
+	rig_controller.deselect()
+	if qol != null: qol.release_constraints()
 	_apply_transforms(snap)
-	side_panel.set_status("Pose loaded from slot %d." % (slot + 1))
+	side_panel.set_status("Pose loaded from slot %d. Press Set to save at the current time." % (slot + 1))
 
 # Bulk processing state
 var _bulk_queue: Array = []       # Array of file paths remaining
