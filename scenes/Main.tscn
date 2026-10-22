@@ -202,8 +202,20 @@ text = "Front"
 [node name="ViewSideButton" type="Button" parent="SidePanel/ViewportToolbar" unique_id=2000000003]
 custom_minimum_size = Vector2(28, 28)
 layout_mode = 2
-tooltip_text = "Orthographic side view"
-text = "Side"
+tooltip_text = "Orthographic view from the character's left"
+text = "Side Left"
+
+[node name="ViewSideRightButton" type="Button" parent="SidePanel/ViewportToolbar"]
+custom_minimum_size = Vector2(28, 28)
+layout_mode = 2
+tooltip_text = "Orthographic view from the character's right"
+text = "Side Right"
+
+[node name="ViewBackButton" type="Button" parent="SidePanel/ViewportToolbar"]
+custom_minimum_size = Vector2(28, 28)
+layout_mode = 2
+tooltip_text = "Orthographic back view"
+text = "Back"
 
 [node name="VSeparator0" type="VSeparator" parent="SidePanel/ViewportToolbar" unique_id=2000000004]
 layout_mode = 2

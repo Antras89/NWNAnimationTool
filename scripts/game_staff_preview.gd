@@ -46,7 +46,7 @@ static func build_file(path: String) -> MeshInstance3D:
 			if img != null: material.albedo_texture = ImageTexture.create_from_image(img)
 		st.set_material(material)
 		st.commit(mesh)
-	if mesh.get_surface_count() == 0: return null
+	if mesh.get_surface_count() == 0 and emitters.is_empty(): return null
 	var result := MeshInstance3D.new()
 	result.name = "GameSaberstaff"
 	result.mesh = mesh

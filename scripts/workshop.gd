@@ -6,6 +6,8 @@ var dirty := false
 var elapsed := 0.0
 var autosave_path := "user://workshop-recovery.nwap"
 var pins: Dictionary = {}
+var detach_right_hand := false
+var right_weapon_transform := Transform3D.IDENTITY
 var grip := false
 var grip_offset := Transform3D.IDENTITY
 var controls: Dictionary = {}
@@ -98,17 +100,7 @@ func _build_panel() -> void:
 	_button(row, "Open project...", func(): _project_dialog(false))
 	_button(box, "Settings / local folders...", func(): WorkshopSettings.show_dialog(app))
 	_button(box, "Import NWN1 reference library...", func(): app.mdl_bank.import_references())
-	_label(box, "Preview helpers (never exported)")
-	var hilt := _check(box, "Lightsaber hilt", app.side_panel._on_hilt_toggled)
-	hilt.set_pressed_no_signal(app.side_panel._show_hilt)
-	_check(box, "Forward axis + target dummy", func(v): guides.visible = v)
-	_check(box, "Blade-tip trail", func(v): trail_enabled = v; clear_trail())
-	_button(box, "Clear trail", clear_trail)
-	_label(box, "Pose constraints — arrange the hand / feet first, then lock")
-	controls.grip = _check(box, "Keep left hand on right-hand grip", _set_grip)
-	controls.left_leg = _check(box, "Pin left foot", func(v): _pin("left_leg", v))
-	controls.right_leg = _check(box, "Pin right foot", func(v): _pin("right_leg", v))
-	_label(box, "Locks affect editing; playback shows saved keys. Save key after editing.")
+	_build_quick_toolbar()
 	_button(box, "Add pose folder...", _choose_pose_folder)
 	_button(box, "Pose library / NWN1 references / Compare...", func():
 		open_library())
@@ -136,6 +128,37 @@ func _build_panel() -> void:
 	_label(box, "Timeline: drag a dot to move one key; Shift+drag moves following keys.")
 	_label(box, "Changing Duration scales all key times. Project files retain key names.")
 	panel.about_to_popup.connect(refresh_keys)
+
+func _quick_toggle(parent: Node, text: String, tip: String, action: Callable) -> Button:
+	var b := Button.new()
+	b.text = text
+	b.tooltip_text = tip
+	b.toggle_mode = true
+	parent.add_child(b)
+	b.toggled.connect(action)
+	return b
+
+func _build_quick_toolbar() -> void:
+	var bar := HFlowContainer.new()
+	bar.name = "PoseToolsToolbar"
+	app.side_panel.add_child(bar)
+	bar.anchor_right = 1.0
+	bar.offset_left = 200.0
+	bar.offset_right = -8.0
+	bar.offset_top = 60.0
+	bar.offset_bottom = 90.0
+	bar.alignment = FlowContainer.ALIGNMENT_CENTER
+	bar.mouse_filter = Control.MOUSE_FILTER_PASS
+	var hilt := _quick_toggle(bar, "Hilt", "Show lightsaber hilt (preview only)", app.side_panel._on_hilt_toggled)
+	hilt.set_pressed_no_signal(app.side_panel._show_hilt)
+	_quick_toggle(bar, "Target", "Show forward axis and target dummy (preview only)", func(v): guides.visible = v)
+	_quick_toggle(bar, "Trail", "Show blade-tip trail (preview only)", func(v): trail_enabled = v; clear_trail())
+	_button(bar, "Clear trail", clear_trail)
+	controls.detach_right_hand = _quick_toggle(bar, "Free R hand", "Detach right hand from weapon. Set a key after editing; playback uses saved keys.", _set_detach_right_hand)
+	_button(bar, "T-pose", app._set_t_pose).tooltip_text = "Set T-pose without replacing animation keys. Ctrl+Z to undo."
+	controls.grip = _quick_toggle(bar, "L grip", "Keep left hand on right-hand grip while editing. Set a key after editing.", _set_grip)
+	controls.left_leg = _quick_toggle(bar, "Pin L foot", "Pin left foot while editing. Set a key after editing.", func(v): _pin("left_leg", v))
+	controls.right_leg = _quick_toggle(bar, "Pin R foot", "Pin right foot while editing. Set a key after editing.", func(v): _pin("right_leg", v))
 
 func refresh_keys() -> void:
 	key_list.clear()
@@ -208,6 +231,12 @@ func _load_project(path: String) -> void:
 	refresh_keys()
 	app.side_panel.set_status("Recovered / opened project: " + path)
 
+func _set_detach_right_hand(enabled: bool) -> void:
+	detach_right_hand = enabled
+	if enabled:
+		var weapon: Node3D = app.rig_controller.find_node("rhand")
+		right_weapon_transform = weapon.global_transform
+
 func _set_grip(enabled: bool) -> void:
 	grip = enabled
 	if enabled:
@@ -222,12 +251,16 @@ func _pin(id: String, enabled: bool) -> void:
 		pins[id] = {"transform": chain[2].global_transform, "pole": app._limb_targets[id].pole}
 
 func release_constraints() -> void:
+	detach_right_hand = false
 	grip = false
 	pins.clear()
 	for c in controls.values(): c.set_pressed_no_signal(false)
 	clear_trail()
 
 func apply_constraints() -> void:
+	if detach_right_hand:
+		var weapon: Node3D = app.rig_controller.find_node("rhand")
+		weapon.global_transform = right_weapon_transform
 	for id in pins:
 		var chain: Array = app.rig_controller.get_chain_nodes(id)
 		var p: Dictionary = pins[id]

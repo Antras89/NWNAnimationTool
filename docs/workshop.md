@@ -1,7 +1,6 @@
 # Animation Workshop and NWN1 MDL banks
 
-Open **Workshop** above the viewport for document undo/redo, recovery, posing
-constraints, timeline labels, a pose library and side-by-side animation comparisons.
+Open **Workshop** above the viewport for document undo/redo, recovery, timeline labels, a pose library and side-by-side animation comparisons.
 
 ## Local setup
 
@@ -41,7 +40,8 @@ retained in `mdl_bank/vendor/LICENSE-SWLOR.txt`.
 - Select a key in Workshop to label it or enter its time. Key labels belong to the
   project, not the NWN animation format.
 - Pose-memory slots show the saved animation name above their Save/Load buttons.
-  They remain session-only pose snapshots, not complete animation slots.
+  There are seven session-only slots. Save captures a pose; Open stores an animation from
+  Pose Library; Load applies its first pose without replacing the working timeline.
 
 ## Preview helpers
 
@@ -117,3 +117,24 @@ Single sabers in R.Wpn and L.Wpn load `user://lightsaber/lightsaber.json` with t
 Workshop > Add pose folder opens a directory picker. Custom folders are remembered across restarts; the library lists TXT/MDL animations from subfolders, supports Refresh and name filtering, and Preview animation opens and plays a selected clip. Full MDL banks open the clip-selection dialog first.
 
 Optional local hand part 008 previews read the male/female left/right model JSON files from user://hands008. They replace only hand mesh geometry before pick-collider creation, preserving bone transforms and weapon attachments. Mannequin selection colors are retained; library thumbnails use the same meshes. No hand assets are committed.
+
+## Additional viewport controls
+
+Front, Back, Side Left and Side Right provide orthographic views. The compact second
+row exposes Hilt, Target, Trail, Clear trail, Free R hand, T-pose, L grip and foot pins;
+hover for full descriptions. Free R hand holds the weapon in world space during
+editing. Set a key to retain the resulting attachment offset. T-pose supports Undo
+and leaves existing keys unchanged. Numeric transforms appear above Pose Memory;
+All selects the whole body, and Rotation Y = 180 turns it around.
+
+Both hand menus offer independent local model previews, including rifle, pistol,
+staff, spear, katar, shield, training sabers/staves, vibroknife, 2H Sword and DoubleStaff.
+Shield uses the left forearm. The separate DoubleStaff switch has been removed.
+These entries require corresponding local `user://<model>/<model>.json` files and
+textures; they are not included in the repository. Standard saber/staff previews use
+`user://lightsaber/lightsaber.json` and `user://saberstaff/saberstaff.json`.
+Emitter-only models are accepted, with the same static-card preview limitations.
+
+For multi-clip GLB imports, preview and Bake consistently prefer the longest non-RESET
+clip with tracks rather than an alphabetically first short reference clip. This is
+an automatic selection heuristic, not a guarantee of correct motion retargeting.

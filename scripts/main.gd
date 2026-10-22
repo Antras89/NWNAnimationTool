@@ -275,6 +275,26 @@ func _capture_rest_transforms(node: Node) -> void:
 	for child in node.get_children():
 		_capture_rest_transforms(child)
 
+func _set_t_pose() -> void:
+	_push_undo_snapshot()
+	_playing = false
+	side_panel.set_playing(false)
+	if qol != null: qol.release_constraints()
+	for node in _rest_transforms:
+		if is_instance_valid(node): node.transform = _rest_transforms[node]
+	# Straighten each arm out from its shoulder, retaining native bone lengths.
+	for id in ["left_arm", "right_arm"]:
+		var chain: Array = rig_controller.get_chain_nodes(id)
+		var direction := Vector3.LEFT if id == "left_arm" else Vector3.RIGHT
+		for i in range(2):
+			var current: Vector3 = (chain[i + 1].global_position - chain[i].global_position).normalized()
+			chain[i].global_basis = Basis(Quaternion(current, direction)) * chain[i].global_basis
+	_resync_limb_targets_from_current_pose()
+	if rig_controller.selected_component != "":
+		_on_component_selected(rig_controller.selected_component)
+	_refresh_all_pole_handles()
+	side_panel.set_status("T-pose applied. Set a key to add it to the animation; Ctrl+Z to undo.")
+
 func _on_reset_pressed() -> void:
 	_push_undo_snapshot()
 	for node in _rest_transforms.keys():
@@ -616,7 +636,7 @@ func _on_component_selected(component_id: String) -> void:
 	_refresh_all_pole_handles()
 
 	side_panel.transform_panel.visible = true
-	side_panel.transform_panel.set_label(", ".join(rig_controller.selected_components))
+	side_panel.transform_panel.set_label("All — whole character" if rig_controller.all_body_selected() else ", ".join(rig_controller.selected_components))
 	side_panel.transform_panel.set_position_enabled(is_ik or _can_translate_selection())
 
 func _on_component_deselected() -> void:
@@ -1250,7 +1270,7 @@ func _on_retarget_load_animation_requested(path: String) -> void:
 	# nothing and the overlay/bake would always read the bind pose.
 	var anim_player := Retargeter._find_animation_player(scene)
 	if anim_player != null:
-		var anim_names := anim_player.get_animation_list()
+		var anim_names := Retargeter.motion_animation_names(anim_player)
 		if not anim_names.is_empty():
 			anim_player.play(anim_names[0])
 			anim_player.seek(0.0, true)
@@ -1323,7 +1343,7 @@ func _sync_retarget_overlay(t: float) -> void:
 	var anim_player := Retargeter._find_animation_player(_retarget_anim_scene)
 	if anim_player == null:
 		return
-	var anim_names := anim_player.get_animation_list()
+	var anim_names := Retargeter.motion_animation_names(anim_player)
 	if anim_names.is_empty():
 		return
 	var length: float = anim_player.get_animation(anim_names[0]).length
@@ -1403,7 +1423,7 @@ func _on_retarget_bake_requested() -> void:
 	var anim_player: AnimationPlayer = Retargeter._find_animation_player(_retarget_anim_scene)
 	if skeleton == null or anim_player == null:
 		return
-	var anim_names := anim_player.get_animation_list()
+	var anim_names := Retargeter.motion_animation_names(anim_player)
 	if anim_names.is_empty():
 		return
 
@@ -1512,10 +1532,10 @@ func _apply_glb_source_xform() -> void:
 	_retarget_anim_scene.position = side_panel.get_source_xform("glb").origin
 	_sync_retarget_overlay(side_panel.timeline.current_time)
 
-# Five session-only slots: Save stores a pose; Open stores a complete animation.
-var _pose_memory: Array = [null, null, null, null, null]  # pose snapshots
-var _pose_memory_names: Array[String] = ["", "", "", "", ""]
-var _pose_memory_clips: Array = [null, null, null, null, null]
+# Seven session-only slots: Save stores a pose; Open stores a complete animation.
+var _pose_memory: Array = [null, null, null, null, null, null, null]  # pose snapshots
+var _pose_memory_names: Array[String] = ["", "", "", "", "", "", ""]
+var _pose_memory_clips: Array = [null, null, null, null, null, null, null]
 var _pose_memory_pending_slot: int = -1
 
 func _on_pose_memory_open(slot: int) -> void:

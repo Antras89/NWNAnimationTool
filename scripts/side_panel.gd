@@ -24,6 +24,8 @@ signal save_pose_requested(path: String, anim_name: String)
 
 var _export_current_pose := false
 var _double_staff := false
+var _firearm := ""
+var _left_weapon_model := ""
 var _show_hilt := true
 
 signal pose_memory_save_requested(slot: int)
@@ -118,6 +120,9 @@ const UTIL_ID_GLB := 2
 const UTIL_ID_BULK := 3
 
 func _ready() -> void:
+	# Keep numeric transforms above memory slots and prevent sideways scrolling.
+	_sidebar.move_child(transform_panel, _sidebar.get_node("PoseMemory").get_index())
+	$Sidebar/Scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	var fm: PopupMenu = file_menu.get_popup()
 	fm.add_item("New", FILE_ID_NEW)
 	fm.add_item("Open...", FILE_ID_OPEN)
@@ -149,16 +154,48 @@ func _ready() -> void:
 	cloak_button.toggled.connect(_on_cloak_toggled)
 	viewport_toolbar.get_node("View3DButton").pressed.connect(func(): view_mode_requested.emit("3d"))
 	viewport_toolbar.get_node("ViewFrontButton").pressed.connect(func(): view_mode_requested.emit("front"))
-	viewport_toolbar.get_node("ViewSideButton").pressed.connect(func(): view_mode_requested.emit("side"))
+	viewport_toolbar.get_node("ViewSideButton").pressed.connect(func(): view_mode_requested.emit("side_left"))
+	viewport_toolbar.get_node("ViewSideRightButton").pressed.connect(func(): view_mode_requested.emit("side_right"))
+	viewport_toolbar.get_node("ViewBackButton").pressed.connect(func(): view_mode_requested.emit("back"))
 	male_button.pressed.connect(func(): _on_gender_button_pressed(MALE_MODEL_PATH))
 	female_button.pressed.connect(func(): _on_gender_button_pressed(FEMALE_MODEL_PATH))
-	var staff := CheckButton.new()
-	staff.name = "DoubleStaffToggle"
-	staff.text = "DoubleStaff"
-	staff.tooltip_text = "Preview a double-bladed staff in the right hand (does not change the pose)"
-	viewport_toolbar.add_child(staff)
-	viewport_toolbar.move_child(staff, right_hand_weapon_button.get_index()+1)
-	staff.toggled.connect(_on_double_staff_toggled)
+	var firearm := OptionButton.new()
+	firearm.name = "FirearmPreview"
+	firearm.fit_to_longest_item = false
+	firearm.custom_minimum_size.x = 100
+	firearm.clip_text = true
+	for label in ["Saber", "Rifle", "Pistol", "Staff", "Spear", "Katar", "Shield", "Training Saber 151", "Training Saber 152", "Training Saber 153", "Training Staff 071", "Training Staff 072", "Training Pike 073", "Vibroknife", "2H Sword", "DoubleStaff"]: firearm.add_item(label)
+	firearm.tooltip_text = "Game weapon preview; Shield attaches to the left forearm"
+	viewport_toolbar.add_child(firearm)
+	viewport_toolbar.move_child(firearm, right_hand_weapon_button.get_index()+1)
+	firearm.item_selected.connect(func(index: int):
+		if index == 6:
+			left_shield_button.set_pressed_no_signal(true)
+			_add_weapon("lforearm", "shield", Color(.5,1.0,.3))
+			return
+		_firearm = ["", "rifle", "pistol", "staff", "spear", "katar", "shield", "wswglsbr_b_151", "wswglsbr_b_152", "wswglsbr_b_153", "wdblsbr_b_071", "wdblsbr_b_072", "wdblsbr_b_073", "vibroknife", "greatsword", "doublestaff"][index]
+		_double_staff = _firearm == "doublestaff"
+		right_hand_weapon_button.set_pressed_no_signal(true)
+		_add_weapon("rhand", "right_weapon", Color(.2,.9,1.0)))
+	var left_picker := OptionButton.new()
+	left_picker.name = "LeftWeaponPreview"
+	left_picker.fit_to_longest_item = false
+	left_picker.custom_minimum_size.x = 100
+	left_picker.clip_text = true
+	for label in ["Saber", "Rifle", "Pistol", "Staff", "Spear", "Katar", "Shield", "Training Saber 151", "Training Saber 152", "Training Saber 153", "Training Staff 071", "Training Staff 072", "Training Pike 073", "Vibroknife", "2H Sword", "DoubleStaff"]: left_picker.add_item(label)
+	left_picker.tooltip_text = "Left-hand model (independent of the right hand); Shield uses the left forearm"
+	viewport_toolbar.add_child(left_picker)
+	viewport_toolbar.move_child(left_picker, left_hand_weapon_button.get_index()+1)
+	left_picker.item_selected.connect(func(index: int):
+		if index == 6:
+			left_hand_weapon_button.button_pressed = false
+			left_shield_button.set_pressed_no_signal(true)
+			_add_weapon("lforearm", "shield", Color(.5,1.0,.3))
+			return
+		_left_weapon_model = ["", "rifle", "pistol", "staff", "spear", "katar", "shield", "wswglsbr_b_151", "wswglsbr_b_152", "wswglsbr_b_153", "wdblsbr_b_071", "wdblsbr_b_072", "wdblsbr_b_073", "vibroknife", "greatsword", "doublestaff"][index]
+		left_shield_button.button_pressed = false
+		left_hand_weapon_button.set_pressed_no_signal(true)
+		_add_weapon("lhand", "left_weapon", Color(1.0,.2,.2)))
 	right_hand_weapon_button.toggled.connect(_on_weapon_toggled.bind("rhand", "right_weapon", Color(0.2, 0.9, 1.0)))
 	left_hand_weapon_button.toggled.connect(_on_weapon_toggled.bind("lhand", "left_weapon", Color(1.0, 0.2, 0.2)))
 	left_shield_button.toggled.connect(_on_weapon_toggled.bind("lforearm", "shield", Color(0.5, 1.0, 0.3)))
@@ -172,12 +209,12 @@ func _ready() -> void:
 		bone_config_panel.visible = true)
 	bake_button.pressed.connect(func(): retarget_bake_requested.emit())
 
-	for i in range(3, 5):
+	for i in range(3, 7):
 		var extra := _sidebar.get_node("PoseMemory/Slot3").duplicate()
 		extra.name = "Slot%d" % (i + 1)
 		extra.get_node("Label").text = "%d. Empty" % (i + 1)
 		_sidebar.get_node("PoseMemory").add_child(extra)
-	for i in 5:
+	for i in 7:
 		var slot_name := "Slot%d" % (i + 1)
 		var save_btn: Button = _sidebar.get_node("PoseMemory/%s/Actions/SaveButton" % slot_name)
 		var load_btn: Button = _sidebar.get_node("PoseMemory/%s/Actions/LoadButton" % slot_name)
@@ -395,13 +432,27 @@ func _add_weapon(hand_node_name: String, component_id: String, color: Color) -> 
 	var hand := _find(rig_root, hand_node_name)
 	if hand == null:
 		return
-	if component_id in ["right_weapon", "left_weapon"]:
-		var actual := preload("res://scripts/game_staff_preview.gd").build(component_id == "right_weapon" and _double_staff)
+	if component_id in ["right_weapon", "left_weapon", "shield"]:
+		var builder = preload("res://scripts/game_staff_preview.gd")
+		var actual: MeshInstance3D
+		var model_id: String = _left_weapon_model if component_id == "left_weapon" else _firearm
+		if component_id == "shield":
+			actual = builder.build_file("user://shield/shield.json")
+		elif model_id == "doublestaff":
+			actual = builder.build(true)
+		elif not model_id.is_empty():
+			actual = builder.build_file("user://" + model_id + "/" + model_id + ".json")
+			if actual == null:
+				_weapon_meshes.erase(hand_node_name)
+				set_status("Missing local game model: " + model_id)
+				return
+		else:
+			actual = builder.build(component_id == "right_weapon" and _double_staff)
 		if actual != null:
 			hand.add_child(actual)
 			_weapon_meshes[hand_node_name] = actual
 			if rig_controller != null: rig_controller.set_component_pick_mesh(component_id,hand_node_name,actual)
-			set_status("Game saber hilt and emitters: " + str(actual.get_meta("game_resource")) + " (original scale and attachment)")
+			set_status("Game weapon: " + str(actual.get_meta("game_resource")) + " (original scale and attachment)")
 			return
 	var mesh := CylinderMesh.new()
 	var mi := MeshInstance3D.new()
@@ -585,6 +636,8 @@ func _find(node: Node, target_name: String) -> Node3D:
 	return null
 
 func _on_double_staff_toggled(enabled: bool) -> void:
+	_firearm = ""
+	viewport_toolbar.get_node("FirearmPreview").select(0)
 	_double_staff = enabled
 	right_hand_weapon_button.set_pressed_no_signal(true)
 	_add_weapon("rhand", "right_weapon", Color(.2,.9,1.0))
